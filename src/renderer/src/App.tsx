@@ -25,6 +25,12 @@ import { createPortal } from "react-dom";
 import type { ReactElement, ReactNode } from "react";
 import { suggestEmoji } from "@shared/emoji";
 import { aliasesForIngredientName, getHangulInitials, normalizeSearchText } from "@shared/search";
+import {
+  canonicalUnitValue,
+  formatIngredientAmount,
+  unitLabel,
+  unitOptionsForSystem
+} from "@shared/units";
 import type {
   AppSettings,
   Difficulty,
@@ -640,6 +646,7 @@ export function App(): ReactElement {
                 defaultIngredientUnit={settings.lastIngredientUnit}
                 recentEmojis={settings.recentEmojis}
                 t={t}
+                language={settings.language}
                 onDraftChange={setDraft}
                 onPickImage={() => void handlePickImage()}
                 onFindPixabayImages={() => void handleFindPixabayImages()}
@@ -765,6 +772,7 @@ function GlobalSettingsModal({
   onChange: (patch: Partial<AppSettings>) => void;
 }): ReactElement {
   const unitOptions = unitOptionsForSystem(settings.unitSystem);
+  const selectedUnit = canonicalUnitValue(settings.lastIngredientUnit);
 
   return (
     <section
@@ -873,21 +881,21 @@ function GlobalSettingsModal({
           <section className="settings-card settings-card-wide" aria-labelledby="settings-unit-memory-title">
             <h3 id="settings-unit-memory-title">{t.defaultUnit}</h3>
             <select
-              value={settings.lastIngredientUnit}
+              value={selectedUnit}
               onChange={(event) =>
                 onChange({ lastIngredientUnit: event.currentTarget.value })
               }
             >
               <option value="">{t.none}</option>
               {settings.lastIngredientUnit &&
-                !unitOptions.includes(settings.lastIngredientUnit) && (
+                !unitOptions.includes(selectedUnit) && (
                   <option value={settings.lastIngredientUnit}>
                     {settings.lastIngredientUnit}
                   </option>
                 )}
               {unitOptions.map((unit) => (
                 <option value={unit} key={unit}>
-                  {unit}
+                  {unitLabel(unit, settings.language)}
                 </option>
               ))}
             </select>
@@ -1098,7 +1106,7 @@ function RecipeDetail({
                 <span className="ingredient-emoji">{ingredient.emoji}</span>
                 <span className="ingredient-name">{ingredient.name}</span>
                 <span className="ingredient-amount">
-                  {[ingredient.quantity, ingredient.unit].filter(Boolean).join(" ")}
+                  {formatIngredientAmount(ingredient.quantity, ingredient.unit, language)}
                 </span>
               </li>
             ))}
@@ -1156,6 +1164,7 @@ interface RecipeEditorProps {
   defaultIngredientUnit: string;
   recentEmojis: string[];
   t: UiText;
+  language: LanguageCode;
   onDraftChange: (draft: RecipeDraft) => void;
   onPickImage: () => void;
   onFindPixabayImages: () => void;
@@ -1173,6 +1182,7 @@ function RecipeEditor({
   defaultIngredientUnit,
   recentEmojis,
   t,
+  language,
   onDraftChange,
   onPickImage,
   onFindPixabayImages,
@@ -1505,7 +1515,7 @@ function RecipeEditor({
                   placeholder={t.quantity}
                 />
                 <select
-                  value={ingredient.unit}
+                  value={canonicalUnitValue(ingredient.unit)}
                   aria-label={t.unit}
                   onChange={(event) =>
                     {
@@ -1516,12 +1526,13 @@ function RecipeEditor({
                   }
                 >
                   <option value="">{t.none}</option>
-                  {ingredient.unit && !ingredientUnitOptions.includes(ingredient.unit) && (
+                  {ingredient.unit &&
+                    !ingredientUnitOptions.includes(canonicalUnitValue(ingredient.unit)) && (
                     <option value={ingredient.unit}>{ingredient.unit}</option>
                   )}
                   {ingredientUnitOptions.map((unit) => (
                     <option value={unit} key={unit}>
-                      {unit}
+                      {unitLabel(unit, language)}
                     </option>
                   ))}
                 </select>
@@ -1996,7 +2007,7 @@ function createRecipeDraftWithDefaultUnit(unit: string): RecipeDraft {
     ...draft,
     ingredients: draft.ingredients.map((ingredient) => ({
       ...ingredient,
-      unit
+      unit: canonicalUnitValue(unit)
     }))
   };
 }
@@ -2025,11 +2036,3 @@ function rememberEmoji(recentEmojis: string[], emoji: string): string[] {
     .slice(0, 24);
 }
 
-function unitOptionsForSystem(unitSystem: UnitSystem): string[] {
-  const common = ["tsp", "tbsp", "cup", "piece", "clove", "slice", "sheet", "block", "stalk"];
-  const metric = ["g", "kg", "ml", "L", "cm", "개", "쪽", "모", "장", "줄", "컵", "큰술", "작은술"];
-  const imperial = ["oz", "lb", "fl oz", "pint", "quart"];
-  return unitSystem === "imperial"
-    ? [...common, ...imperial]
-    : [...common, ...metric];
-}

@@ -1,5 +1,6 @@
 import type { Equipment, Ingredient, InstructionStep, RecipeDraft } from "./types";
 import { detectIngredientAllergens, suggestEmoji } from "./emoji";
+import { canonicalUnitValue } from "./units";
 
 export function createId(prefix = "id"): string {
   const random =
@@ -71,7 +72,7 @@ export function normalizeDraft(draft: RecipeDraft): RecipeDraft {
         id: ingredient.id || createId("ingredient"),
         name,
         quantity: ingredient.quantity.trim(),
-        unit: ingredient.unit.trim(),
+        unit: canonicalUnitValue(ingredient.unit),
         emoji: ingredient.emoji.trim() || suggestEmoji(name),
         allergens,
         order: index

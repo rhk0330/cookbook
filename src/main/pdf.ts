@@ -2,6 +2,7 @@ import { BrowserWindow, dialog } from "electron";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import { allergenDictionary } from "@shared/dictionaries";
+import { formatIngredientAmount } from "@shared/units";
 import type { LanguageCode, Recipe } from "@shared/types";
 import type { DataPaths } from "./paths";
 
@@ -274,7 +275,7 @@ function renderRecipeHtml(recipe: Recipe, language: LanguageCode, dataRoot: stri
               (ingredient) => `<div class="ingredient">
                 <span>${escapeHtml(ingredient.emoji)}</span>
                 <strong>${escapeHtml(ingredient.name)}</strong>
-                <span class="amount">${escapeHtml([ingredient.quantity, ingredient.unit].filter(Boolean).join(" "))}</span>
+                <span class="amount">${escapeHtml(formatIngredientAmount(ingredient.quantity, ingredient.unit, language))}</span>
               </div>`
             )
             .join("")}
