@@ -78,6 +78,7 @@ describe("emoji fallback and Hangul-aware search", () => {
       prepAhead: parsed.draft.prepAhead,
       allergens: parsed.draft.allergens,
       coverImage: null,
+      coverImages: [],
       ingredients: parsed.draft.ingredients,
       equipment: [],
       steps: parsed.draft.steps,

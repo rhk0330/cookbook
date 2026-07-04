@@ -61,7 +61,7 @@ export function registerMediaProtocol(paths: DataPaths): void {
 export class MediaService {
   constructor(private readonly paths: DataPaths) {}
 
-  importImage(filePath: string): ImageAsset {
+  importImage(filePath: string, role: ImageAsset["role"] = "cover"): ImageAsset {
     if (!filePath || !isAbsolute(filePath) || !existsSync(filePath)) {
       throw new Error("이미지 파일을 찾을 수 없습니다.");
     }
@@ -94,7 +94,11 @@ export class MediaService {
     };
   }
 
-  importImageBuffer(fileName: string, content: Buffer): ImageAsset {
+  importImageBuffer(
+    fileName: string,
+    content: Buffer,
+    role: ImageAsset["role"] = "cover"
+  ): ImageAsset {
     const extension = extname(fileName).toLowerCase();
     if (!supportedImageExtensions.has(extension)) {
       throw new Error("Unsupported image format.");
@@ -111,7 +115,7 @@ export class MediaService {
       id: `image_${randomUUID().replace(/-/g, "")}`,
       localPath,
       url: mediaUrl(localPath),
-      role: "cover",
+      role,
       altText: fileName,
       source: "imported",
       createdAt: new Date().toISOString()
@@ -135,6 +139,25 @@ export class MediaService {
     }
 
     return this.importImage(result.filePaths[0]);
+  }
+
+  async pickImages(): Promise<ImageAsset[]> {
+    const result = await dialog.showOpenDialog({
+      title: "이미지 선택",
+      properties: ["openFile", "multiSelections"],
+      filters: [
+        {
+          name: "Images",
+          extensions: ["jpg", "jpeg", "png", "webp", "gif", "svg"]
+        }
+      ]
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return [];
+    }
+
+    return result.filePaths.map((filePath) => this.importImage(filePath));
   }
 
   async searchPixabayImages({

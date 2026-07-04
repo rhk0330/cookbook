@@ -35,12 +35,22 @@ const imperialUnits: UnitOption[] = [
   { value: "quart", labelEn: "quart", labelKo: "쿼트", aliases: ["쿼트"] }
 ];
 
-export function unitOptionsForSystem(unitSystem: UnitSystem): string[] {
+export function unitOptionsForSystem(
+  unitSystem: UnitSystem,
+  customUnits: string[] = [],
+  hiddenUnits: string[] = []
+): string[] {
   const units = unitSystem === "imperial"
     ? [...commonUnits, ...imperialUnits]
     : [...commonUnits, ...metricUnits];
+  const hiddenKeys = new Set(
+    normalizeCustomUnits(hiddenUnits).map((unit) => unitKey(unit))
+  );
 
-  return units.map((unit) => unit.value);
+  return uniqueUnits([
+    ...units.map((unit) => unit.value),
+    ...customUnits
+  ]).filter((unit) => !hiddenKeys.has(unitKey(unit)));
 }
 
 export function canonicalUnitValue(value: string): string {
@@ -84,4 +94,48 @@ export function formatIngredientAmount(
 
   const label = unitLabel(cleanUnit, language);
   return [cleanQuantity, label].filter(Boolean).join(" ");
+}
+
+export function normalizeCustomUnits(values: unknown): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return uniqueUnits(
+    values
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => canonicalUnitValue(value))
+      .filter(Boolean)
+  ).slice(0, 48);
+}
+
+export function allKnownUnitOptions(customUnits: string[] = []): string[] {
+  return uniqueUnits([
+    ...commonUnits.map((unit) => unit.value),
+    ...metricUnits.map((unit) => unit.value),
+    ...imperialUnits.map((unit) => unit.value),
+    ...customUnits
+  ]);
+}
+
+function uniqueUnits(values: string[]): string[] {
+  const seen = new Set<string>();
+  const units: string[] = [];
+
+  for (const value of values) {
+    const clean = value.trim();
+    const key = unitKey(clean);
+    if (!clean || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    units.push(clean);
+  }
+
+  return units;
+}
+
+function unitKey(value: string): string {
+  return canonicalUnitValue(value).normalize("NFKC").toLowerCase();
 }

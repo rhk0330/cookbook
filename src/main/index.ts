@@ -111,7 +111,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle("recipes:get", (_event, id: string) => getRepository().get(id));
   ipcMain.handle("recipes:create", (_event, draft: RecipeDraft) => {
     const created = getRepository().create(draft);
-    if (!created.coverImage) {
+    if (!created.coverImage && created.coverImages.length === 0) {
       const cover = getMediaService().generateCover(created);
       return getRepository().setCoverImage(created.id, cover);
     }
@@ -136,6 +136,7 @@ function registerIpcHandlers(): void {
     getMediaService().importImage(filePath)
   );
   ipcMain.handle("media:pickImage", () => getMediaService().pickImage());
+  ipcMain.handle("media:pickImages", () => getMediaService().pickImages());
   ipcMain.handle("media:searchPixabay", (_event, query: string, language: LanguageCode) =>
     getMediaService().searchPixabayImages({
       apiKey: getPixabayApiKey(),

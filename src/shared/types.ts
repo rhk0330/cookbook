@@ -41,6 +41,7 @@ export interface InstructionStep {
   id: string;
   order: number;
   text: string;
+  images: ImageAsset[];
 }
 
 export interface Equipment {
@@ -85,6 +86,7 @@ export interface Recipe {
   prepAhead: boolean;
   allergens: string[];
   coverImage: ImageAsset | null;
+  coverImages: ImageAsset[];
   ingredients: Ingredient[];
   equipment: Equipment[];
   steps: InstructionStep[];
@@ -105,6 +107,7 @@ export interface RecipeDraft {
   prepAhead: boolean;
   allergens: string[];
   coverImage: ImageAsset | null;
+  coverImages: ImageAsset[];
   ingredients: Ingredient[];
   equipment: Equipment[];
   steps: InstructionStep[];
@@ -126,6 +129,8 @@ export interface AppSettings {
   theme: ThemeMode;
   accentColor: AccentColor;
   lastIngredientUnit: string;
+  customUnits: string[];
+  hiddenUnits: string[];
   recentEmojis: string[];
   wifiSharingEnabled: boolean;
   wifiSharingPort: number;
@@ -154,6 +159,7 @@ export interface CookbookApi {
   media: {
     importImage: (filePath: string) => Promise<ImageAsset>;
     pickImage: () => Promise<ImageAsset | null>;
+    pickImages: () => Promise<ImageAsset[]>;
     generateCover: (recipeId: string) => Promise<ImageAsset>;
     searchPixabay: (
       query: string,

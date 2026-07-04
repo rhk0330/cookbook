@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { AppSettings, ImageAsset, Recipe, RecipeDraft } from "@shared/types";
 import { buildRecipeSearchText, recipeMatchesQuery } from "@shared/search";
+import { normalizeCustomUnits } from "@shared/units";
 import { createId, normalizeDraft } from "@shared/validation";
 import type { DataPaths } from "./paths";
 import { mediaUrl } from "./media";
@@ -19,6 +20,7 @@ interface RecipeRow {
   prep_ahead: number;
   allergens_json: string;
   cover_image_json: string | null;
+  cover_images_json: string | null;
   ingredients_json: string;
   equipment_json: string;
   steps_json: string;
@@ -36,6 +38,8 @@ const defaultSettings: AppSettings = {
   theme: "light",
   accentColor: "blue",
   lastIngredientUnit: "",
+  customUnits: [],
+  hiddenUnits: [],
   recentEmojis: [],
   wifiSharingEnabled: false,
   wifiSharingPort: 8787
@@ -108,6 +112,7 @@ export class RecipeRepository {
         prep_ahead,
         allergens_json,
         cover_image_json,
+        cover_images_json,
         ingredients_json,
         equipment_json,
         steps_json,
@@ -115,7 +120,7 @@ export class RecipeRepository {
         search_text,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       toRecipeValues(recipe)
     );
     this.save();
@@ -148,6 +153,7 @@ export class RecipeRepository {
         prep_ahead = ?,
         allergens_json = ?,
         cover_image_json = ?,
+        cover_images_json = ?,
         ingredients_json = ?,
         equipment_json = ?,
         steps_json = ?,
@@ -185,6 +191,7 @@ export class RecipeRepository {
       prepAhead: recipe.prepAhead,
       allergens: recipe.allergens,
       coverImage,
+      coverImages: [coverImage],
       ingredients: recipe.ingredients,
       equipment: recipe.equipment,
       steps: recipe.steps,
@@ -231,6 +238,14 @@ export class RecipeRepository {
         settings.lastIngredientUnit = row.value;
       }
 
+      if (row.key === "customUnits") {
+        settings.customUnits = normalizeCustomUnits(parseJson<string[]>(row.value, []));
+      }
+
+      if (row.key === "hiddenUnits") {
+        settings.hiddenUnits = normalizeCustomUnits(parseJson<string[]>(row.value, []));
+      }
+
       if (row.key === "recentEmojis") {
         settings.recentEmojis = normalizeRecentEmojis(
           parseJson<string[]>(row.value, [])
@@ -268,6 +283,8 @@ export class RecipeRepository {
     next.lastIngredientUnit = typeof next.lastIngredientUnit === "string"
       ? next.lastIngredientUnit.trim()
       : "";
+    next.customUnits = normalizeCustomUnits(next.customUnits);
+    next.hiddenUnits = normalizeCustomUnits(next.hiddenUnits);
     next.recentEmojis = normalizeRecentEmojis(next.recentEmojis);
     next.wifiSharingEnabled = Boolean(next.wifiSharingEnabled);
     next.wifiSharingPort = normalizeWifiSharingPort(next.wifiSharingPort);
@@ -302,6 +319,14 @@ export class RecipeRepository {
     );
     this.db.run(
       "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ["customUnits", JSON.stringify(next.customUnits)]
+    );
+    this.db.run(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ["hiddenUnits", JSON.stringify(next.hiddenUnits)]
+    );
+    this.db.run(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       ["recentEmojis", JSON.stringify(next.recentEmojis)]
     );
     this.db.run(
@@ -323,9 +348,17 @@ export class RecipeRepository {
       this.db.run("DELETE FROM recipes");
 
       for (const item of recipes) {
+        const coverImages = item.coverImages?.length
+          ? item.coverImages
+          : item.coverImage
+            ? [item.coverImage]
+            : [];
         const recipeWithEquipment = {
           ...item,
-          equipment: item.equipment ?? []
+          coverImage: coverImages[0] ?? item.coverImage ?? null,
+          coverImages,
+          equipment: item.equipment ?? [],
+          steps: normalizeStoredSteps(item.steps)
         };
         const recipe = {
           ...recipeWithEquipment,
@@ -342,16 +375,17 @@ export class RecipeRepository {
           meal_type,
           main_protein,
           prep_ahead,
-          allergens_json,
-          cover_image_json,
-          ingredients_json,
+        allergens_json,
+        cover_image_json,
+        cover_images_json,
+        ingredients_json,
           equipment_json,
           steps_json,
           notes,
           search_text,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           toRecipeValues(recipe)
         );
       }
@@ -385,6 +419,7 @@ export class RecipeRepository {
         prep_ahead INTEGER NOT NULL DEFAULT 0,
         allergens_json TEXT NOT NULL DEFAULT '[]',
         cover_image_json TEXT,
+        cover_images_json TEXT,
         ingredients_json TEXT NOT NULL DEFAULT '[]',
         equipment_json TEXT NOT NULL DEFAULT '[]',
         steps_json TEXT NOT NULL DEFAULT '[]',
@@ -404,6 +439,7 @@ export class RecipeRepository {
     `);
     this.db.run("PRAGMA user_version = 1");
     this.ensureColumn("recipes", "equipment_json", "TEXT NOT NULL DEFAULT '[]'");
+    this.ensureColumn("recipes", "cover_images_json", "TEXT");
     this.ensureColumn("recipes", "meal_type", "TEXT NOT NULL DEFAULT 'dinner'");
     this.ensureColumn("recipes", "main_protein", "TEXT NOT NULL DEFAULT 'other'");
     this.ensureColumn("recipes", "prep_ahead", "INTEGER NOT NULL DEFAULT 0");
@@ -471,9 +507,10 @@ function buildRecipe({
     prepAhead: normalized.prepAhead,
     allergens: normalized.allergens,
     coverImage: normalized.coverImage ? hydrateImage(normalized.coverImage) : null,
+    coverImages: hydrateImages(normalized.coverImages),
     ingredients: normalized.ingredients,
     equipment: normalized.equipment,
-    steps: normalized.steps,
+    steps: hydrateSteps(normalized.steps),
     notes: normalized.notes,
     createdAt,
     updatedAt
@@ -486,6 +523,10 @@ function buildRecipe({
 }
 
 function mapRecipeRow(row: RecipeRow): Recipe {
+  const coverImage = hydrateImage(parseJson<ImageAsset | null>(row.cover_image_json, null));
+  const coverImages = hydrateImages(
+    parseJson<ImageAsset[] | null>(row.cover_images_json, null) ?? (coverImage ? [coverImage] : [])
+  );
   const recipe = {
     id: row.id,
     title: row.title,
@@ -497,10 +538,11 @@ function mapRecipeRow(row: RecipeRow): Recipe {
     mainProtein: row.main_protein,
     prepAhead: Boolean(row.prep_ahead),
     allergens: parseJson<string[]>(row.allergens_json, []),
-    coverImage: hydrateImage(parseJson<ImageAsset | null>(row.cover_image_json, null)),
+    coverImage: coverImages[0] ?? coverImage,
+    coverImages,
     ingredients: parseJson(row.ingredients_json, []),
     equipment: parseJson(row.equipment_json, []),
-    steps: parseJson(row.steps_json, []),
+    steps: hydrateSteps(parseJson(row.steps_json, [])),
     notes: row.notes,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -525,6 +567,7 @@ function toRecipeValues(recipe: Recipe): SqlValue[] {
     recipe.prepAhead ? 1 : 0,
     JSON.stringify(recipe.allergens),
     recipe.coverImage ? JSON.stringify(recipe.coverImage) : null,
+    JSON.stringify(recipe.coverImages ?? (recipe.coverImage ? [recipe.coverImage] : [])),
     JSON.stringify(recipe.ingredients),
     JSON.stringify(recipe.equipment ?? []),
     JSON.stringify(recipe.steps),
@@ -581,6 +624,37 @@ function normalizeRecentEmojis(value: unknown): string[] {
       .map((item) => item.trim())
       .filter(Boolean)
   )].slice(0, 24);
+}
+
+function hydrateImages(assets: ImageAsset[] | null): ImageAsset[] {
+  if (!Array.isArray(assets)) {
+    return [];
+  }
+
+  return assets
+    .map((asset) => hydrateImage(asset))
+    .filter((asset): asset is ImageAsset => Boolean(asset));
+}
+
+function hydrateSteps(steps: Recipe["steps"]): Recipe["steps"] {
+  return normalizeStoredSteps(steps).map((step) => ({
+    ...step,
+    images: hydrateImages(step.images)
+  }));
+}
+
+function normalizeStoredSteps(steps: Recipe["steps"] | undefined): Recipe["steps"] {
+  if (!Array.isArray(steps)) {
+    return [];
+  }
+
+  return steps.map((step, index) => ({
+    ...step,
+    id: step.id || createId("step"),
+    text: step.text ?? "",
+    images: Array.isArray(step.images) ? step.images : [],
+    order: Number.isFinite(step.order) ? step.order : index
+  }));
 }
 
 function normalizeWifiSharingPort(value: number): number {

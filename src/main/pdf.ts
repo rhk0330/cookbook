@@ -193,7 +193,7 @@ function renderRecipeHtml(recipe: Recipe, language: LanguageCode, dataRoot: stri
       .cover, .cover-placeholder {
         width: 100%;
         aspect-ratio: 4 / 3;
-        object-fit: cover;
+        object-fit: contain;
         border: 1px solid #e8eaed;
         border-radius: 28px;
         background: #f8fafc;

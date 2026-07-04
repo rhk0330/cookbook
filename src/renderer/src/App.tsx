@@ -3,6 +3,8 @@ import {
   CalendarCheck,
   ChefHat,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   Download,
   FileDown,
@@ -31,6 +33,7 @@ import type {
 import { suggestEmoji } from "@shared/emoji";
 import { aliasesForIngredientName, getHangulInitials, normalizeSearchText } from "@shared/search";
 import {
+  allKnownUnitOptions,
   canonicalUnitValue,
   formatIngredientAmount,
   unitLabel,
@@ -104,10 +107,18 @@ const defaultSettings: AppSettings = {
   theme: "light",
   accentColor: "blue",
   lastIngredientUnit: "",
+  customUnits: [],
+  hiddenUnits: [],
   recentEmojis: [],
   wifiSharingEnabled: false,
   wifiSharingPort: 8787
 };
+
+interface PhotoViewerState {
+  images: ImageAsset[];
+  index: number;
+  title: string;
+}
 
 const mealTypeOptions: MealType[] = [
   "breakfast",
@@ -146,6 +157,7 @@ export function App(): ReactElement {
   const [pixabayResults, setPixabayResults] = useState<PixabayImageOption[]>([]);
   const [pixabayQuery, setPixabayQuery] = useState("");
   const [pixabayPickerOpen, setPixabayPickerOpen] = useState(false);
+  const [photoViewer, setPhotoViewer] = useState<PhotoViewerState | null>(null);
   const [pixabayLoading, setPixabayLoading] = useState(false);
   const [imageSearchStatus, setImageSearchStatus] = useState<ImageSearchStatus>("idle");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -169,7 +181,7 @@ export function App(): ReactElement {
   const modalTitle = editing
     ? draft.title.trim() || selectedRecipe?.title || t.untitledRecipe
     : selectedRecipe?.title ?? t.untitledRecipe;
-  const scrollLocked = modalOpen || pixabayPickerOpen || settingsOpen;
+  const scrollLocked = modalOpen || pixabayPickerOpen || settingsOpen || Boolean(photoViewer);
   const filteredRecipes = useMemo(
     () => applyRecipeFilters(recipes, filters),
     [recipes, filters]
@@ -354,12 +366,35 @@ export function App(): ReactElement {
     await reloadRecipes();
   }
 
-  async function handlePickImage(): Promise<void> {
-    const image = await cookbookApi.media.pickImage();
-    if (image) {
-      setDraft((current) => ({ ...current, coverImage: image }));
+  async function handlePickCoverImages(): Promise<void> {
+    const images = await cookbookApi.media.pickImages();
+    if (images.length > 0) {
+      setDraft((current) => addCoverImagesToDraft(current, images));
       setStatus({ kind: "imageAdded" });
     }
+  }
+
+  async function handlePickStepImages(stepIndex: number): Promise<void> {
+    const images = await cookbookApi.media.pickImages();
+    if (images.length === 0) {
+      return;
+    }
+
+    setDraft((current) => ({
+      ...current,
+      steps: current.steps.map((step, index) =>
+        index === stepIndex
+          ? {
+              ...step,
+              images: [
+                ...(step.images ?? []),
+                ...images.map((image) => ({ ...image, role: "step" as const }))
+              ]
+            }
+          : step
+      )
+    }));
+    setStatus({ kind: "imageAdded" });
   }
 
   function handleFindPixabayImages(): void {
@@ -417,7 +452,7 @@ export function App(): ReactElement {
         draft.title || t.untitledRecipe
       );
       preserveRecipeModalScroll(() => {
-        setDraft((current) => ({ ...current, coverImage: imported }));
+        setDraft((current) => addCoverImagesToDraft(current, [imported]));
         setPixabayPickerOpen(false);
         setPixabayResults([]);
         setImageSearchStatus("idle");
@@ -675,19 +710,25 @@ export function App(): ReactElement {
                 pixabayLoading={pixabayLoading}
                 imageSearchStatus={imageSearchStatus}
                 unitSystem={settings.unitSystem}
+                customUnits={settings.customUnits}
+                hiddenUnits={settings.hiddenUnits}
                 defaultIngredientUnit={settings.lastIngredientUnit}
                 recentEmojis={settings.recentEmojis}
                 canSearchImages={!isSharedBrowserClient}
                 t={t}
                 language={settings.language}
                 onDraftChange={setDraft}
-                onPickImage={() => void handlePickImage()}
+                onPickCoverImages={() => void handlePickCoverImages()}
+                onPickStepImages={(stepIndex) => void handlePickStepImages(stepIndex)}
                 onFindPixabayImages={() => void handleFindPixabayImages()}
                 onRememberIngredientUnit={(unit) =>
                   void handleSettingsChange({ lastIngredientUnit: unit })
                 }
                 onRememberEmoji={(recentEmojis) =>
                   void handleSettingsChange({ recentEmojis })
+                }
+                onOpenPhotos={(images, index, title) =>
+                  setPhotoViewer({ images, index, title })
                 }
                 onPreserveScroll={preserveRecipeModalScroll}
               />
@@ -696,6 +737,9 @@ export function App(): ReactElement {
                 recipe={selectedRecipe}
                 language={settings.language}
                 t={t}
+                onOpenPhotos={(images, index, title) =>
+                  setPhotoViewer({ images, index, title })
+                }
               />
             ) : null}
           </div>
@@ -791,6 +835,25 @@ export function App(): ReactElement {
           onRefreshSharing={() => void reloadSharingInfo()}
         />
       )}
+
+      {photoViewer && (
+        <PhotoViewerModal
+          state={photoViewer}
+          t={t}
+          onClose={() => setPhotoViewer(null)}
+          onMove={(index) =>
+            setPhotoViewer((current) =>
+              current
+                ? {
+                    ...current,
+                    index:
+                      (index + current.images.length) % current.images.length
+                  }
+                : current
+            )
+          }
+        />
+      )}
     </main>
   );
 }
@@ -810,8 +873,69 @@ function GlobalSettingsModal({
   onChange: (patch: Partial<AppSettings>) => void;
   onRefreshSharing: () => void;
 }): ReactElement {
-  const unitOptions = unitOptionsForSystem(settings.unitSystem);
+  const [customUnitDraft, setCustomUnitDraft] = useState("");
+  const unitOptions = unitOptionsForSystem(
+    settings.unitSystem,
+    settings.customUnits,
+    settings.hiddenUnits
+  );
+  const allUnitOptions = allKnownUnitOptions(settings.customUnits);
+  const hiddenUnitSet = new Set(settings.hiddenUnits.map(normalizeUnitKey));
+  const visibleManagedUnits = allUnitOptions.filter(
+    (unit) => !hiddenUnitSet.has(normalizeUnitKey(unit))
+  );
+  const hiddenManagedUnits = settings.hiddenUnits;
   const selectedUnit = canonicalUnitValue(settings.lastIngredientUnit);
+
+  function addCustomUnit(): void {
+    const unit = canonicalUnitValue(customUnitDraft);
+    if (!unit) {
+      return;
+    }
+
+    const nextUnits = [
+      ...settings.customUnits.filter(
+        (item) => item.normalize("NFKC").toLowerCase() !== unit.normalize("NFKC").toLowerCase()
+      ),
+      unit
+    ];
+    onChange({
+      customUnits: nextUnits,
+      hiddenUnits: settings.hiddenUnits.filter(
+        (item) => normalizeUnitKey(item) !== normalizeUnitKey(unit)
+      )
+    });
+    setCustomUnitDraft("");
+  }
+
+  function hideUnit(unit: string): void {
+    const normalized = canonicalUnitValue(unit);
+    const nextCustomUnits = settings.customUnits.filter(
+      (item) => normalizeUnitKey(item) !== normalizeUnitKey(normalized)
+    );
+    const nextHiddenUnits = [
+      ...settings.hiddenUnits.filter(
+        (item) => normalizeUnitKey(item) !== normalizeUnitKey(normalized)
+      ),
+      normalized
+    ];
+    onChange({
+      customUnits: nextCustomUnits,
+      hiddenUnits: nextHiddenUnits,
+      lastIngredientUnit:
+        normalizeUnitKey(settings.lastIngredientUnit) === normalizeUnitKey(normalized)
+          ? ""
+          : settings.lastIngredientUnit
+    });
+  }
+
+  function restoreUnit(unit: string): void {
+    onChange({
+      hiddenUnits: settings.hiddenUnits.filter(
+        (item) => normalizeUnitKey(item) !== normalizeUnitKey(unit)
+      )
+    });
+  }
 
   return (
     <section
@@ -939,6 +1063,62 @@ function GlobalSettingsModal({
               ))}
             </select>
             <p className="subtle-line">{t.rememberedUnit}</p>
+          </section>
+
+          <section className="settings-card settings-card-wide" aria-labelledby="settings-custom-units-title">
+            <h3 id="settings-custom-units-title">{t.customUnits}</h3>
+            <div className="custom-unit-form">
+              <input
+                value={customUnitDraft}
+                onChange={(event) => setCustomUnitDraft(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addCustomUnit();
+                  }
+                }}
+                placeholder={t.customUnitPlaceholder}
+              />
+              <button className="soft-button" type="button" onClick={addCustomUnit}>
+                <Plus size={17} />
+                {t.add}
+              </button>
+            </div>
+            <div className="custom-unit-list">
+              {visibleManagedUnits.length > 0 ? (
+                visibleManagedUnits.map((unit) => (
+                  <span className="custom-unit-chip" key={unit}>
+                    {unitLabel(unit, settings.language)}
+                    <button
+                      type="button"
+                      aria-label={t.removeUnit}
+                      onClick={() => hideUnit(unit)}
+                    >
+                      <X size={14} />
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <p className="subtle-line">{t.noCustomUnits}</p>
+              )}
+            </div>
+            {hiddenManagedUnits.length > 0 && (
+              <div className="custom-unit-list">
+                <span className="subtle-line unit-list-label">{t.removedUnits}</span>
+                {hiddenManagedUnits.map((unit) => (
+                  <span className="custom-unit-chip muted" key={unit}>
+                    {unitLabel(unit, settings.language)}
+                    <button
+                      type="button"
+                      aria-label={t.restoreUnit}
+                      onClick={() => restoreUnit(unit)}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="settings-card settings-card-wide wifi-sharing-card" aria-labelledby="settings-wifi-title">
@@ -1225,16 +1405,24 @@ function RecipeFiltersPanel({
 function RecipeDetail({
   recipe,
   language,
-  t
+  t,
+  onOpenPhotos
 }: {
   recipe: Recipe;
   language: LanguageCode;
   t: UiText;
+  onOpenPhotos: (images: ImageAsset[], index: number, title: string) => void;
 }): ReactElement {
+  const coverImages = coverImagesFromRecipe(recipe);
   return (
     <article className="recipe-detail">
       <div className="detail-hero">
-        <CoverImage image={recipe.coverImage} title={recipe.title} t={t} />
+        <PhotoCarousel
+          images={coverImages}
+          title={recipe.title}
+          t={t}
+          onOpenPhotos={onOpenPhotos}
+        />
         <div className="metric-strip" aria-label={t.recipeSummary}>
           <Metric icon={<Clock3 size={19} />} label={t.time} value={formatMinutes(recipe.timeMinutes, t)} />
           <Metric icon={<Flame size={19} />} label={t.spicy} value={`${Math.max(1, recipe.spicyLevel)}/5`} />
@@ -1305,7 +1493,16 @@ function RecipeDetail({
           <h3 id="steps-title">{t.recipe}</h3>
           <ol className="steps-list">
             {recipe.steps.map((step) => (
-              <li key={step.id}>{step.text}</li>
+              <li key={step.id}>
+                <p>{step.text}</p>
+                {(step.images ?? []).length > 0 && (
+                  <PhotoThumbStrip
+                    images={step.images ?? []}
+                    title={`${recipe.title} ${t.recipe}`}
+                    onOpenPhotos={onOpenPhotos}
+                  />
+                )}
+              </li>
             ))}
           </ol>
         </section>
@@ -1325,16 +1522,20 @@ interface RecipeEditorProps {
   pixabayLoading: boolean;
   imageSearchStatus: ImageSearchStatus;
   unitSystem: UnitSystem;
+  customUnits: string[];
+  hiddenUnits: string[];
   defaultIngredientUnit: string;
   recentEmojis: string[];
   canSearchImages: boolean;
   t: UiText;
   language: LanguageCode;
   onDraftChange: (draft: RecipeDraft) => void;
-  onPickImage: () => void;
+  onPickCoverImages: () => void;
+  onPickStepImages: (stepIndex: number) => void;
   onFindPixabayImages: () => void;
   onRememberIngredientUnit: (unit: string) => void;
   onRememberEmoji: (recentEmojis: string[]) => void;
+  onOpenPhotos: (images: ImageAsset[], index: number, title: string) => void;
   onPreserveScroll: (action: () => void) => void;
 }
 
@@ -1344,19 +1545,24 @@ function RecipeEditor({
   pixabayLoading,
   imageSearchStatus,
   unitSystem,
+  customUnits,
+  hiddenUnits,
   defaultIngredientUnit,
   recentEmojis,
   canSearchImages,
   t,
   language,
   onDraftChange,
-  onPickImage,
+  onPickCoverImages,
+  onPickStepImages,
   onFindPixabayImages,
   onRememberIngredientUnit,
   onRememberEmoji,
+  onOpenPhotos,
   onPreserveScroll
 }: RecipeEditorProps): ReactElement {
-  const ingredientUnitOptions = unitOptionsForSystem(unitSystem);
+  const ingredientUnitOptions = unitOptionsForSystem(unitSystem, customUnits, hiddenUnits);
+  const coverImages = coverImagesFromDraft(draft);
   const [emojiPickerIndex, setEmojiPickerIndex] = useState<number | null>(null);
   const [emojiSearch, setEmojiSearch] = useState("");
   const filteredEmojiOptions = useMemo(
@@ -1409,6 +1615,52 @@ function RecipeEditor({
     });
   }
 
+  function updateStep(index: number, patch: Partial<RecipeDraft["steps"][number]>): void {
+    onDraftChange({
+      ...draft,
+      steps: draft.steps.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...patch } : item
+      )
+    });
+  }
+
+  function removeCoverImage(index: number): void {
+    const nextImages = coverImages.filter((_, itemIndex) => itemIndex !== index);
+    onDraftChange({
+      ...draft,
+      coverImage: nextImages[0] ?? null,
+      coverImages: nextImages
+    });
+  }
+
+  function makePrimaryCoverImage(index: number): void {
+    const selected = coverImages[index];
+    if (!selected) {
+      return;
+    }
+
+    const nextImages = [
+      selected,
+      ...coverImages.filter((_, itemIndex) => itemIndex !== index)
+    ];
+    onDraftChange({
+      ...draft,
+      coverImage: selected,
+      coverImages: nextImages
+    });
+  }
+
+  function removeStepImage(stepIndex: number, imageIndex: number): void {
+    const step = draft.steps[stepIndex];
+    if (!step) {
+      return;
+    }
+
+    updateStep(stepIndex, {
+      images: (step.images ?? []).filter((_, index) => index !== imageIndex)
+    });
+  }
+
   function updateEquipment(index: number, patch: Partial<Equipment>): void {
     onDraftChange({
       ...draft,
@@ -1436,10 +1688,34 @@ function RecipeEditor({
       <div className="editor-grid">
         <div className="editor-main">
         <div className="editor-cover-frame">
-          <CoverImage image={draft.coverImage} title={draft.title || t.untitledRecipe} t={t} />
+          <PhotoCarousel
+            images={coverImages}
+            title={draft.title || t.untitledRecipe}
+            t={t}
+            onOpenPhotos={onOpenPhotos}
+          />
         </div>
+        {coverImages.length > 0 && (
+          <div className="photo-thumb-strip" aria-label={t.coverPhotos}>
+            {coverImages.map((image, index) => (
+              <div className="photo-thumb-item" key={image.id}>
+                <button
+                  className={index === 0 ? "photo-thumb active" : "photo-thumb"}
+                  type="button"
+                  aria-label={t.makePrimaryPhoto}
+                  onClick={() => makePrimaryCoverImage(index)}
+                >
+                  <img src={image.url} alt={image.altText || draft.title || t.untitledRecipe} />
+                </button>
+                <IconButton label={t.removePhoto} onClick={() => removeCoverImage(index)}>
+                  <X size={16} />
+                </IconButton>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="editor-actions">
-          <button className="soft-button" type="button" onClick={onPickImage}>
+          <button className="soft-button" type="button" onClick={onPickCoverImages}>
             <Image size={18} />
             {t.chooseImage}
           </button>
@@ -1682,28 +1958,24 @@ function RecipeEditor({
                   }
                   placeholder={t.quantity}
                 />
-                <select
-                  value={canonicalUnitValue(ingredient.unit)}
+                <input
+                  value={ingredient.unit}
+                  list={`ingredient-unit-options-${index}`}
                   aria-label={t.unit}
-                  onChange={(event) =>
-                    {
-                      const unit = event.currentTarget.value;
-                      updateIngredient(index, { unit });
-                      onRememberIngredientUnit(unit);
-                    }
-                  }
-                >
-                  <option value="">{t.none}</option>
-                  {ingredient.unit &&
-                    !ingredientUnitOptions.includes(canonicalUnitValue(ingredient.unit)) && (
-                    <option value={ingredient.unit}>{ingredient.unit}</option>
-                  )}
+                  onChange={(event) => {
+                    const unit = event.currentTarget.value;
+                    updateIngredient(index, { unit });
+                    onRememberIngredientUnit(unit);
+                  }}
+                  placeholder={t.unit}
+                />
+                <datalist id={`ingredient-unit-options-${index}`}>
                   {ingredientUnitOptions.map((unit) => (
                     <option value={unit} key={unit}>
                       {unitLabel(unit, language)}
                     </option>
                   ))}
-                </select>
+                </datalist>
                 <IconButton
                   label={t.removeIngredient}
                   onClick={() =>
@@ -1738,20 +2010,35 @@ function RecipeEditor({
             {draft.steps.map((step, index) => (
               <div className="step-editor-row" key={step.id}>
                 <span>{index + 1}</span>
-                <textarea
-                  value={step.text}
-                  onChange={(event) =>
-                    onDraftChange({
-                      ...draft,
-                      steps: draft.steps.map((item, itemIndex) =>
-                        itemIndex === index
-                          ? { ...item, text: event.currentTarget.value }
-                          : item
-                      )
-                    })
-                  }
-                  placeholder={t.stepPlaceholder}
-                />
+                <div className="step-editor-content">
+                  <textarea
+                    value={step.text}
+                    onChange={(event) =>
+                      updateStep(index, { text: event.currentTarget.value })
+                    }
+                    placeholder={t.stepPlaceholder}
+                  />
+                  <div className="step-photo-actions">
+                    <button
+                      className="soft-button compact"
+                      type="button"
+                      onClick={() => onPickStepImages(index)}
+                    >
+                      <Image size={16} />
+                      {t.addPhotos}
+                    </button>
+                  </div>
+                  {(step.images ?? []).length > 0 && (
+                    <PhotoThumbStrip
+                      images={step.images}
+                      title={`${draft.title || t.untitledRecipe} ${index + 1}`}
+                      removable
+                      removeLabel={t.removePhoto}
+                      onRemove={(imageIndex) => removeStepImage(index, imageIndex)}
+                      onOpenPhotos={onOpenPhotos}
+                    />
+                  )}
+                </div>
                 <IconButton
                   label={t.removeStep}
                   onClick={() =>
@@ -2045,6 +2332,193 @@ function CoverImage({
   return <img className="cover-image" src={image.url} alt={image.altText || title} />;
 }
 
+function PhotoCarousel({
+  images,
+  title,
+  t,
+  onOpenPhotos
+}: {
+  images: ImageAsset[];
+  title: string;
+  t: UiText;
+  onOpenPhotos: (images: ImageAsset[], index: number, title: string) => void;
+}): ReactElement {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeImage = images[activeIndex] ?? null;
+
+  useEffect(() => {
+    if (activeIndex >= images.length) {
+      setActiveIndex(0);
+    }
+  }, [activeIndex, images.length]);
+
+  if (images.length === 0) {
+    return (
+      <div className="photo-carousel">
+        <CoverImage image={null} title={title} t={t} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="photo-carousel">
+      <button
+        className="photo-carousel-main"
+        type="button"
+        aria-label={t.openPhotos}
+        onClick={() => onOpenPhotos(images, activeIndex, title)}
+      >
+        <CoverImage image={activeImage} title={title} t={t} />
+      </button>
+      {images.length > 1 && (
+        <div className="photo-carousel-controls">
+          <button
+            className="photo-nav-button"
+            type="button"
+            aria-label={t.previousPhoto}
+            onClick={() =>
+              setActiveIndex((index) => (index - 1 + images.length) % images.length)
+            }
+          >
+            <ChevronLeft size={19} />
+          </button>
+          <span>{activeIndex + 1}/{images.length}</span>
+          <button
+            className="photo-nav-button"
+            type="button"
+            aria-label={t.nextPhoto}
+            onClick={() => setActiveIndex((index) => (index + 1) % images.length)}
+          >
+            <ChevronRight size={19} />
+          </button>
+        </div>
+      )}
+      {images.length > 1 && (
+        <div className="photo-carousel-dots" aria-label={t.openPhotos}>
+          {images.map((image, index) => (
+            <button
+              className={index === activeIndex ? "active" : ""}
+              type="button"
+              key={image.id}
+              aria-label={`${index + 1}/${images.length}`}
+              onClick={() => setActiveIndex(index)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PhotoThumbStrip({
+  images,
+  title,
+  removable = false,
+  removeLabel = "Remove photo",
+  onRemove,
+  onOpenPhotos
+}: {
+  images: ImageAsset[];
+  title: string;
+  removable?: boolean;
+  removeLabel?: string;
+  onRemove?: (index: number) => void;
+  onOpenPhotos: (images: ImageAsset[], index: number, title: string) => void;
+}): ReactElement {
+  return (
+    <div className="step-photo-strip">
+      {images.map((image, index) => (
+        <div className="step-photo-item" key={image.id}>
+          <button
+            className="step-photo-thumb"
+            type="button"
+            onClick={() => onOpenPhotos(images, index, title)}
+          >
+            <img src={image.url} alt={image.altText || title} />
+          </button>
+          {removable && onRemove && (
+            <IconButton label={removeLabel} onClick={() => onRemove(index)}>
+              <X size={15} />
+            </IconButton>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PhotoViewerModal({
+  state,
+  t,
+  onClose,
+  onMove
+}: {
+  state: PhotoViewerState;
+  t: UiText;
+  onClose: () => void;
+  onMove: (index: number) => void;
+}): ReactElement {
+  const image = state.images[state.index];
+
+  return createPortal(
+    <section
+      className="photo-viewer-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t.openPhotos}
+    >
+      <div className="photo-viewer-surface">
+        <div className="modal-topbar">
+          <div>
+            <p className="eyebrow">{state.index + 1}/{state.images.length}</p>
+            <h2>{state.title}</h2>
+          </div>
+          <IconButton label={t.close} onClick={onClose}>
+            <X size={21} />
+          </IconButton>
+        </div>
+        <div className="photo-viewer-stage">
+          {state.images.length > 1 && (
+            <button
+              className="photo-viewer-nav previous"
+              type="button"
+              aria-label={t.previousPhoto}
+              onClick={() => onMove(state.index - 1)}
+            >
+              <ChevronLeft size={24} />
+            </button>
+          )}
+          {image && <img src={image.url} alt={image.altText || state.title} />}
+          {state.images.length > 1 && (
+            <button
+              className="photo-viewer-nav next"
+              type="button"
+              aria-label={t.nextPhoto}
+              onClick={() => onMove(state.index + 1)}
+            >
+              <ChevronRight size={24} />
+            </button>
+          )}
+          {state.images.length > 1 && (
+            <div className="photo-carousel-dots photo-viewer-dots" aria-label={t.openPhotos}>
+              {state.images.map((photo, index) => (
+                <button
+                  className={index === state.index ? "active" : ""}
+                  type="button"
+                  key={photo.id}
+                  aria-label={`${index + 1}/${state.images.length}`}
+                  onClick={() => onMove(index)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>,
+    document.body
+  );
+}
+
 function Metric({
   icon,
   label,
@@ -2092,6 +2566,7 @@ function IconButton({
 }
 
 function recipeToDraft(recipe: Recipe): RecipeDraft {
+  const coverImages = coverImagesFromRecipe(recipe);
   return {
     title: recipe.title,
     aliases: recipe.aliases,
@@ -2102,12 +2577,66 @@ function recipeToDraft(recipe: Recipe): RecipeDraft {
     mainProtein: recipe.mainProtein,
     prepAhead: recipe.prepAhead,
     allergens: recipe.allergens,
-    coverImage: recipe.coverImage,
+    coverImage: coverImages[0] ?? null,
+    coverImages,
     ingredients: recipe.ingredients,
     equipment: recipe.equipment,
-    steps: recipe.steps,
+    steps: recipe.steps.map((step) => ({
+      ...step,
+      images: step.images ?? []
+    })),
     notes: recipe.notes
   };
+}
+
+function coverImagesFromRecipe(recipe: Recipe): ImageAsset[] {
+  return normalizeImageList(
+    (recipe.coverImages?.length ?? 0) > 0
+      ? recipe.coverImages
+      : recipe.coverImage
+        ? [recipe.coverImage]
+        : []
+  );
+}
+
+function coverImagesFromDraft(draft: RecipeDraft): ImageAsset[] {
+  return normalizeImageList(
+    (draft.coverImages?.length ?? 0) > 0
+      ? draft.coverImages
+      : draft.coverImage
+        ? [draft.coverImage]
+        : []
+  );
+}
+
+function addCoverImagesToDraft(draft: RecipeDraft, images: ImageAsset[]): RecipeDraft {
+  const nextImages = normalizeImageList([
+    ...coverImagesFromDraft(draft),
+    ...images.map((image) => ({ ...image, role: "cover" as const }))
+  ]);
+
+  return {
+    ...draft,
+    coverImage: nextImages[0] ?? null,
+    coverImages: nextImages
+  };
+}
+
+function normalizeImageList(images: ImageAsset[]): ImageAsset[] {
+  const seen = new Set<string>();
+  const normalized: ImageAsset[] = [];
+
+  for (const image of images) {
+    const key = image.localPath || image.id;
+    if (!key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    normalized.push(image);
+  }
+
+  return normalized;
 }
 
 function splitCsv(value: string): string[] {
@@ -2115,6 +2644,10 @@ function splitCsv(value: string): string[] {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function normalizeUnitKey(value: string): string {
+  return canonicalUnitValue(value).normalize("NFKC").toLowerCase();
 }
 
 function getValidationStatus(draft: RecipeDraft): StatusMessage | null {

@@ -88,21 +88,31 @@ export class BackupService {
 
 function collectAssets(root: string, recipes: Recipe[]): BackupAsset[] {
   const assets: BackupAsset[] = [];
+  const seen = new Set<string>();
 
   for (const recipe of recipes) {
-    if (!recipe.coverImage) {
-      continue;
-    }
+    const recipeAssets = [
+      recipe.coverImage,
+      ...(recipe.coverImages ?? []),
+      ...recipe.steps.flatMap((step) => step.images ?? [])
+    ];
 
-    const fullPath = resolve(root, recipe.coverImage.localPath);
-    if (!existsSync(fullPath)) {
-      continue;
-    }
+    for (const image of recipeAssets) {
+      if (!image || seen.has(image.localPath)) {
+        continue;
+      }
 
-    assets.push({
-      localPath: recipe.coverImage.localPath,
-      contentBase64: readFileSync(fullPath).toString("base64")
-    });
+      const fullPath = resolve(root, image.localPath);
+      if (!existsSync(fullPath)) {
+        continue;
+      }
+
+      seen.add(image.localPath);
+      assets.push({
+        localPath: image.localPath,
+        contentBase64: readFileSync(fullPath).toString("base64")
+      });
+    }
   }
 
   return assets;

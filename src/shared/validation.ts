@@ -25,7 +25,8 @@ export function createEmptyStep(order = 0): InstructionStep {
   return {
     id: createId("step"),
     order,
-    text: ""
+    text: "",
+    images: []
   };
 }
 
@@ -50,6 +51,7 @@ export function createEmptyRecipeDraft(): RecipeDraft {
     prepAhead: false,
     allergens: [],
     coverImage: null,
+    coverImages: [],
     ingredients: [createEmptyIngredient(0)],
     equipment: [],
     steps: [createEmptyStep(0)],
@@ -85,9 +87,10 @@ export function normalizeDraft(draft: RecipeDraft): RecipeDraft {
       ...step,
       id: step.id || createId("step"),
       text: step.text.trim(),
+      images: normalizeImages(step.images),
       order: index
     }))
-    .filter((step) => step.text.length > 0);
+    .filter((step) => step.text.length > 0 || step.images.length > 0);
 
   const equipment = draft.equipment
     .map((item, index) => ({
@@ -107,6 +110,14 @@ export function normalizeDraft(draft: RecipeDraft): RecipeDraft {
     ...ingredients.flatMap((ingredient) => ingredient.allergens)
   ]);
 
+  const coverImages = normalizeImages(
+    draft.coverImages && draft.coverImages.length > 0
+      ? draft.coverImages
+      : draft.coverImage
+        ? [draft.coverImage]
+        : []
+  );
+
   return {
     ...draft,
     title: draft.title.trim() || "새 레시피",
@@ -118,11 +129,33 @@ export function normalizeDraft(draft: RecipeDraft): RecipeDraft {
     mainProtein: normalizeMainProtein(draft.mainProtein),
     prepAhead: Boolean(draft.prepAhead),
     allergens,
+    coverImage: coverImages[0] ?? null,
+    coverImages,
     ingredients,
     equipment,
     steps,
     notes: draft.notes.trim()
   };
+}
+
+function normalizeImages(value: unknown): RecipeDraft["coverImages"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is RecipeDraft["coverImages"][number] =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      "id" in item &&
+      "localPath" in item &&
+      "url" in item
+    )
+    .map((image) => ({
+      ...image,
+      altText: image.altText.trim(),
+      role: image.role === "step" ? "step" : "cover"
+    }));
 }
 
 export function validateDraft(draft: RecipeDraft): string[] {

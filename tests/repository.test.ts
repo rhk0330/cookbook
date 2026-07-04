@@ -53,6 +53,8 @@ describe("RecipeRepository", () => {
       theme: "dark",
       accentColor: "green",
       lastIngredientUnit: "oz",
+      customUnits: ["pinch", "bundle", "pinch"],
+      hiddenUnits: ["tbsp", "cup", "tbsp"],
       recentEmojis: ["🥬", "🥚", "🥬", ""]
     });
     expect(settings.tileSize).toBe(4);
@@ -61,6 +63,8 @@ describe("RecipeRepository", () => {
     expect(settings.theme).toBe("dark");
     expect(settings.accentColor).toBe("green");
     expect(settings.lastIngredientUnit).toBe("oz");
+    expect(settings.customUnits).toEqual(["pinch", "bundle"]);
+    expect(settings.hiddenUnits).toEqual(["tbsp", "cup"]);
     expect(settings.recentEmojis).toEqual(["🥬", "🥚"]);
 
     repository.close();
@@ -74,6 +78,8 @@ describe("RecipeRepository", () => {
     expect(reopened.getSettings().theme).toBe("dark");
     expect(reopened.getSettings().accentColor).toBe("green");
     expect(reopened.getSettings().lastIngredientUnit).toBe("oz");
+    expect(reopened.getSettings().customUnits).toEqual(["pinch", "bundle"]);
+    expect(reopened.getSettings().hiddenUnits).toEqual(["tbsp", "cup"]);
     expect(reopened.getSettings().recentEmojis).toEqual(["🥬", "🥚"]);
     reopened.close();
   });

@@ -189,7 +189,7 @@ export class WifiCookbookServer {
     if (method === "POST" && pathname === "/api/recipes") {
       const draft = await readJsonBody<RecipeDraft>(request);
       const created = this.options.repository.create(draft);
-      const recipe = created.coverImage
+      const recipe = created.coverImage || created.coverImages.length > 0
         ? created
         : this.options.repository.setCoverImage(
             created.id,
@@ -367,7 +367,12 @@ export class WifiCookbookServer {
   private toHttpRecipe(recipe: Recipe): Recipe {
     return {
       ...recipe,
-      coverImage: this.toHttpImage(recipe.coverImage)
+      coverImage: this.toHttpImage(recipe.coverImage),
+      coverImages: recipe.coverImages.map((image) => this.toHttpImage(image)).filter(isImageAsset),
+      steps: recipe.steps.map((step) => ({
+        ...step,
+        images: step.images.map((image) => this.toHttpImage(image)).filter(isImageAsset)
+      }))
     };
   }
 
@@ -478,6 +483,10 @@ function encodeMediaPath(localPath: string): string {
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
+}
+
+function isImageAsset(image: ImageAsset | null): image is ImageAsset {
+  return Boolean(image);
 }
 
 function isInside(root: string, target: string): boolean {

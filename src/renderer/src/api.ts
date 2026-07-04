@@ -64,6 +64,24 @@ function createHttpCookbookApi(): CookbookApi {
           })
         });
       },
+      pickImages: async () => {
+        const files = await pickFiles("image/*");
+        const images: ImageAsset[] = [];
+        for (const file of files) {
+          const contentBase64 = await fileToBase64(file);
+          images.push(
+            await requestJson<ImageAsset>("/api/media/import-upload", {
+              method: "POST",
+              body: JSON.stringify({
+                fileName: file.name,
+                contentBase64
+              })
+            })
+          );
+        }
+
+        return images;
+      },
       generateCover: (recipeId: string) =>
         requestJson<ImageAsset>("/api/media/generate-cover", {
           method: "POST",
@@ -146,6 +164,23 @@ function pickFile(accept: string): Promise<File | null> {
       "change",
       () => {
         resolvePromise(input.files?.[0] ?? null);
+      },
+      { once: true }
+    );
+    input.click();
+  });
+}
+
+function pickFiles(accept: string): Promise<File[]> {
+  return new Promise((resolvePromise) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.multiple = true;
+    input.addEventListener(
+      "change",
+      () => {
+        resolvePromise(Array.from(input.files ?? []));
       },
       { once: true }
     );

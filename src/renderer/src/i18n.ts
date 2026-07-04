@@ -27,6 +27,12 @@ export interface UiText {
   accentColor: string;
   defaultUnit: string;
   rememberedUnit: string;
+  customUnits: string;
+  customUnitPlaceholder: string;
+  noCustomUnits: string;
+  removeUnit: string;
+  removedUnits: string;
+  restoreUnit: string;
   wifiSharing: string;
   wifiSharingOn: string;
   wifiSharingOff: string;
@@ -91,6 +97,13 @@ export interface UiText {
   none: string;
   noAllergens: string;
   chooseImage: string;
+  coverPhotos: string;
+  makePrimaryPhoto: string;
+  removePhoto: string;
+  addPhotos: string;
+  openPhotos: string;
+  previousPhoto: string;
+  nextPhoto: string;
   findImage: string;
   searchingImages: string;
   pixabayProvider: string;
@@ -190,6 +203,12 @@ export const uiText: Record<LanguageCode, UiText> = {
     accentColor: "강조 색상",
     defaultUnit: "기본 재료 단위",
     rememberedUnit: "새 재료를 추가할 때 이 단위를 자동으로 넣습니다.",
+    customUnits: "사용자 단위",
+    customUnitPlaceholder: "예: pinch, bundle, bowl",
+    noCustomUnits: "추가한 사용자 단위가 없습니다.",
+    removeUnit: "단위 삭제",
+    removedUnits: "숨긴 단위",
+    restoreUnit: "단위 복원",
     wifiSharing: "Wi-Fi 공유",
     wifiSharingOn: "켜기",
     wifiSharingOff: "끄기",
@@ -259,6 +278,13 @@ export const uiText: Record<LanguageCode, UiText> = {
     none: "없음",
     noAllergens: "알레르기 없음",
     chooseImage: "이미지 선택",
+    coverPhotos: "표지 사진",
+    makePrimaryPhoto: "대표 사진으로 설정",
+    removePhoto: "사진 삭제",
+    addPhotos: "사진 추가",
+    openPhotos: "사진 크게 보기",
+    previousPhoto: "이전 사진",
+    nextPhoto: "다음 사진",
     findImage: "이미지 찾기",
     searchingImages: "검색 중",
     pixabayProvider: "Pixabay",
@@ -380,6 +406,12 @@ export const uiText: Record<LanguageCode, UiText> = {
     accentColor: "Accent color",
     defaultUnit: "Default ingredient unit",
     rememberedUnit: "New ingredients will start with this unit.",
+    customUnits: "Custom units",
+    customUnitPlaceholder: "Example: pinch, bundle, bowl",
+    noCustomUnits: "No custom units yet.",
+    removeUnit: "Remove unit",
+    removedUnits: "Hidden units",
+    restoreUnit: "Restore unit",
     wifiSharing: "Wi-Fi sharing",
     wifiSharingOn: "On",
     wifiSharingOff: "Off",
@@ -449,6 +481,13 @@ export const uiText: Record<LanguageCode, UiText> = {
     none: "None",
     noAllergens: "No allergens",
     chooseImage: "Choose image",
+    coverPhotos: "Cover photos",
+    makePrimaryPhoto: "Make primary photo",
+    removePhoto: "Remove photo",
+    addPhotos: "Add photos",
+    openPhotos: "Open photos",
+    previousPhoto: "Previous photo",
+    nextPhoto: "Next photo",
     findImage: "Find image",
     searchingImages: "Searching",
     pixabayProvider: "Pixabay",

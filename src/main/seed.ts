@@ -417,7 +417,8 @@ export function seedRecipesIfNeeded(
 
     const draft: RecipeDraft = {
       ...parsed.draft,
-      coverImage: null
+      coverImage: null,
+      coverImages: []
     };
     const recipe = repository.create(draft);
     const sampleCoverPath = getSampleCoverPath(recipe.title);

@@ -22,6 +22,7 @@ const cookbookApi: CookbookApi = {
   media: {
     importImage: (filePath: string) => ipcRenderer.invoke("media:importImage", filePath),
     pickImage: () => ipcRenderer.invoke("media:pickImage"),
+    pickImages: () => ipcRenderer.invoke("media:pickImages"),
     generateCover: (recipeId: string) =>
       ipcRenderer.invoke("media:generateCover", recipeId),
     searchPixabay: (query: string, language: LanguageCode) =>
