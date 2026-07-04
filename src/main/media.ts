@@ -94,6 +94,30 @@ export class MediaService {
     };
   }
 
+  importImageBuffer(fileName: string, content: Buffer): ImageAsset {
+    const extension = extname(fileName).toLowerCase();
+    if (!supportedImageExtensions.has(extension)) {
+      throw new Error("Unsupported image format.");
+    }
+
+    mkdirSync(this.paths.images, { recursive: true });
+    const hash = createHash("sha256").update(content).digest("hex").slice(0, 16);
+    const cleanName = sanitizeFileName(basename(fileName, extension));
+    const destination = join(this.paths.images, `${hash}-${cleanName || "image"}${extension}`);
+    writeFileSync(destination, content);
+
+    const localPath = toLocalPath(this.paths.root, destination);
+    return {
+      id: `image_${randomUUID().replace(/-/g, "")}`,
+      localPath,
+      url: mediaUrl(localPath),
+      role: "cover",
+      altText: fileName,
+      source: "imported",
+      createdAt: new Date().toISOString()
+    };
+  }
+
   async pickImage(): Promise<ImageAsset | null> {
     const result = await dialog.showOpenDialog({
       title: "표지 이미지 선택",

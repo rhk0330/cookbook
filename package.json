@@ -11,6 +11,7 @@
     "preview": "electron-vite preview",
     "test": "vitest run",
     "package": "electron-builder --win --dir",
+    "postpackage": "node scripts/copy-local-pixabay-key.mjs",
     "dist": "electron-builder --win"
   },
   "dependencies": {

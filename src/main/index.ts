@@ -8,6 +8,7 @@ import { PdfService } from "./pdf";
 import { getDataPaths } from "./paths";
 import { RecipeRepository } from "./repository";
 import { seedRecipesIfNeeded } from "./seed";
+import { WifiCookbookServer } from "./wifi-server";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -24,6 +25,7 @@ let repository: RecipeRepository | null = null;
 let mediaService: MediaService | null = null;
 let backupService: BackupService | null = null;
 let pdfService: PdfService | null = null;
+let wifiServer: WifiCookbookServer | null = null;
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -55,6 +57,12 @@ function getIconPath(): string {
     : join(process.cwd(), "resources", "icon.ico");
 }
 
+function getRendererRoot(): string {
+  return app.isPackaged
+    ? join(__dirname, "../renderer")
+    : join(process.cwd(), "out/renderer");
+}
+
 app.whenReady().then(async () => {
   app.setAppUserModelId("local.korean.cookbook");
   const paths = getDataPaths();
@@ -64,6 +72,16 @@ app.whenReady().then(async () => {
   backupService = new BackupService(paths, repository);
   pdfService = new PdfService(paths);
   seedRecipesIfNeeded(repository, mediaService);
+  wifiServer = new WifiCookbookServer({
+    paths,
+    rendererRoot: getRendererRoot(),
+    repository,
+    mediaService,
+    backupService,
+    pdfService,
+    getPixabayApiKey
+  });
+  await wifiServer.syncWithSettings();
   registerIpcHandlers();
   createWindow();
 
@@ -81,6 +99,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  void wifiServer?.stop();
   repository?.close();
 });
 
@@ -140,9 +159,12 @@ function registerIpcHandlers(): void {
     return cover;
   });
   ipcMain.handle("settings:get", () => getRepository().getSettings());
-  ipcMain.handle("settings:update", (_event, patch: Partial<AppSettings>) =>
-    getRepository().updateSettings(patch)
-  );
+  ipcMain.handle("settings:update", async (_event, patch: Partial<AppSettings>) => {
+    const settings = getRepository().updateSettings(patch);
+    await getWifiServer().syncWithSettings(settings);
+    return settings;
+  });
+  ipcMain.handle("sharing:getInfo", () => getWifiServer().getInfo());
   ipcMain.handle("backup:export", () => getBackupService().exportBackup());
   ipcMain.handle("backup:import", () => getBackupService().importBackup());
 }
@@ -153,15 +175,27 @@ function getPixabayApiKey(): string {
     return savedKey;
   }
 
-  const keyPath = getDataPaths().pixabayApiKey;
-  if (!existsSync(keyPath)) {
-    return "";
+  const keyPaths = [
+    getDataPaths().pixabayApiKey,
+    join(process.cwd(), "data", "pixabay-api-key.txt")
+  ];
+
+  for (const keyPath of [...new Set(keyPaths)]) {
+    if (!existsSync(keyPath)) {
+      continue;
+    }
+
+    const key = readFileSync(keyPath, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith("#"));
+
+    if (key) {
+      return key;
+    }
   }
 
-  return readFileSync(keyPath, "utf8")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line && !line.startsWith("#")) ?? "";
+  return "";
 }
 
 function getRepository(): RecipeRepository {
@@ -194,4 +228,12 @@ function getPdfService(): PdfService {
   }
 
   return pdfService;
+}
+
+function getWifiServer(): WifiCookbookServer {
+  if (!wifiServer) {
+    throw new Error("Wi-Fi sharing server is not ready.");
+  }
+
+  return wifiServer;
 }

@@ -36,7 +36,9 @@ const defaultSettings: AppSettings = {
   theme: "light",
   accentColor: "blue",
   lastIngredientUnit: "",
-  recentEmojis: []
+  recentEmojis: [],
+  wifiSharingEnabled: false,
+  wifiSharingPort: 8787
 };
 
 export class RecipeRepository {
@@ -234,6 +236,14 @@ export class RecipeRepository {
           parseJson<string[]>(row.value, [])
         );
       }
+
+      if (row.key === "wifiSharingEnabled") {
+        settings.wifiSharingEnabled = row.value === "true";
+      }
+
+      if (row.key === "wifiSharingPort") {
+        settings.wifiSharingPort = normalizeWifiSharingPort(Number(row.value));
+      }
     }
 
     return settings;
@@ -259,6 +269,8 @@ export class RecipeRepository {
       ? next.lastIngredientUnit.trim()
       : "";
     next.recentEmojis = normalizeRecentEmojis(next.recentEmojis);
+    next.wifiSharingEnabled = Boolean(next.wifiSharingEnabled);
+    next.wifiSharingPort = normalizeWifiSharingPort(next.wifiSharingPort);
 
     this.db.run(
       "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -291,6 +303,14 @@ export class RecipeRepository {
     this.db.run(
       "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
       ["recentEmojis", JSON.stringify(next.recentEmojis)]
+    );
+    this.db.run(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ["wifiSharingEnabled", String(next.wifiSharingEnabled)]
+    );
+    this.db.run(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      ["wifiSharingPort", String(next.wifiSharingPort)]
     );
     this.save();
 
@@ -561,4 +581,12 @@ function normalizeRecentEmojis(value: unknown): string[] {
       .map((item) => item.trim())
       .filter(Boolean)
   )].slice(0, 24);
+}
+
+function normalizeWifiSharingPort(value: number): number {
+  if (!Number.isFinite(value)) {
+    return defaultSettings.wifiSharingPort;
+  }
+
+  return Math.min(65535, Math.max(1024, Math.round(value)));
 }

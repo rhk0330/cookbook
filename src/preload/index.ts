@@ -34,6 +34,9 @@ const cookbookApi: CookbookApi = {
     update: (patch: Partial<AppSettings>) =>
       ipcRenderer.invoke("settings:update", patch)
   },
+  sharing: {
+    getInfo: () => ipcRenderer.invoke("sharing:getInfo")
+  },
   backup: {
     export: () => ipcRenderer.invoke("backup:export"),
     import: () => ipcRenderer.invoke("backup:import")

@@ -27,6 +27,20 @@ export interface UiText {
   accentColor: string;
   defaultUnit: string;
   rememberedUnit: string;
+  wifiSharing: string;
+  wifiSharingOn: string;
+  wifiSharingOff: string;
+  wifiSharingUrl: string;
+  wifiFriendlyUrl: string;
+  wifiFriendlyHelp: string;
+  wifiIpAddress: string;
+  wifiPort: string;
+  wifiQrCode: string;
+  wifiWarning: string;
+  wifiStableIpHelp: string;
+  wifiUnavailable: string;
+  wifiRefresh: string;
+  copyAddress: string;
   accentLabels: Record<AccentColor, string>;
   searchResults: string;
   viewRecipes: string;
@@ -176,6 +190,20 @@ export const uiText: Record<LanguageCode, UiText> = {
     accentColor: "강조 색상",
     defaultUnit: "기본 재료 단위",
     rememberedUnit: "새 재료를 추가할 때 이 단위를 자동으로 넣습니다.",
+    wifiSharing: "Wi-Fi 공유",
+    wifiSharingOn: "켜기",
+    wifiSharingOff: "끄기",
+    wifiSharingUrl: "접속 주소",
+    wifiFriendlyUrl: "쉬운 주소",
+    wifiFriendlyHelp: "기기나 공유기가 지원하지 않으면 위 숫자 IP 주소를 사용하세요.",
+    wifiIpAddress: "PC Wi-Fi IP",
+    wifiPort: "포트",
+    wifiQrCode: "QR 코드",
+    wifiWarning: "암호가 꺼져 있어 같은 Wi-Fi의 모든 기기가 레시피를 보고 편집할 수 있습니다.",
+    wifiStableIpHelp: "항상 같은 주소를 쓰려면 공유기 설정에서 이 PC의 IP 예약을 켜세요.",
+    wifiUnavailable: "Wi-Fi 공유를 켜면 주소와 QR 코드가 여기에 표시됩니다.",
+    wifiRefresh: "새로고침",
+    copyAddress: "주소 복사",
     accentLabels: {
       blue: "블루",
       green: "그린",
@@ -352,6 +380,20 @@ export const uiText: Record<LanguageCode, UiText> = {
     accentColor: "Accent color",
     defaultUnit: "Default ingredient unit",
     rememberedUnit: "New ingredients will start with this unit.",
+    wifiSharing: "Wi-Fi sharing",
+    wifiSharingOn: "On",
+    wifiSharingOff: "Off",
+    wifiSharingUrl: "Access URL",
+    wifiFriendlyUrl: "Friendly URL",
+    wifiFriendlyHelp: "If your device or router does not support it, use the numeric IP address above.",
+    wifiIpAddress: "PC Wi-Fi IP",
+    wifiPort: "Port",
+    wifiQrCode: "QR code",
+    wifiWarning: "No password is enabled, so any device on this Wi-Fi can view and edit recipes.",
+    wifiStableIpHelp: "For a truly stable address, reserve this PC's IP in your router settings.",
+    wifiUnavailable: "Turn on Wi-Fi sharing to show the address and QR code here.",
+    wifiRefresh: "Refresh",
+    copyAddress: "Copy address",
     accentLabels: {
       blue: "Blue",
       green: "Green",

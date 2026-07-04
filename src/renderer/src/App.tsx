@@ -22,7 +22,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ReactElement, ReactNode } from "react";
+import type {
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactElement,
+  ReactNode
+} from "react";
 import { suggestEmoji } from "@shared/emoji";
 import { aliasesForIngredientName, getHangulInitials, normalizeSearchText } from "@shared/search";
 import {
@@ -44,7 +49,8 @@ import type {
   PixabayImageOption,
   Recipe,
   RecipeDraft,
-  UnitSystem
+  UnitSystem,
+  WifiSharingInfo
 } from "@shared/types";
 import {
   createEmptyEquipment,
@@ -54,7 +60,9 @@ import {
   validateDraft
 } from "@shared/validation";
 import { emojiOptions, type EmojiOption } from "./emojiCatalog";
+import { cookbookApi, isSharedBrowserClient } from "./api";
 import { getAllergenLabel, type UiText, uiText } from "./i18n";
+import { createQrMatrix } from "./qr";
 
 type StatusMessage =
   | { kind: "welcome"; index: number }
@@ -96,7 +104,9 @@ const defaultSettings: AppSettings = {
   theme: "light",
   accentColor: "blue",
   lastIngredientUnit: "",
-  recentEmojis: []
+  recentEmojis: [],
+  wifiSharingEnabled: false,
+  wifiSharingPort: 8787
 };
 
 const mealTypeOptions: MealType[] = [
@@ -126,9 +136,11 @@ const mainProteinOptions: MainProtein[] = [
 export function App(): ReactElement {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+  const [sharingInfo, setSharingInfo] = useState<WifiSharingInfo | null>(null);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Recipe[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const [flippedTileId, setFlippedTileId] = useState<string | null>(null);
   const [draft, setDraft] = useState<RecipeDraft>(createEmptyRecipeDraft);
   const [editing, setEditing] = useState(false);
   const [pixabayResults, setPixabayResults] = useState<PixabayImageOption[]>([]);
@@ -200,7 +212,7 @@ export function App(): ReactElement {
         return;
       }
 
-      const results = await window.cookbook.recipes.search(query);
+      const results = await cookbookApi.recipes.search(query);
       if (!canceled) {
         setSearchResults(results);
       }
@@ -217,17 +229,19 @@ export function App(): ReactElement {
   }, [query]);
 
   async function loadInitialData(): Promise<void> {
-    const [nextSettings, nextRecipes] = await Promise.all([
-      window.cookbook.settings.get(),
-      window.cookbook.recipes.list()
+    const [nextSettings, nextRecipes, nextSharingInfo] = await Promise.all([
+      cookbookApi.settings.get(),
+      cookbookApi.recipes.list(),
+      cookbookApi.sharing.getInfo()
     ]);
     setSettings(nextSettings);
     setRecipes(nextRecipes);
+    setSharingInfo(nextSharingInfo);
     setStatus({ kind: "welcome", index: randomWelcomeIndex(nextSettings.language) });
   }
 
   async function reloadRecipes(selectedId?: string): Promise<void> {
-    const nextRecipes = await window.cookbook.recipes.list();
+    const nextRecipes = await cookbookApi.recipes.list();
     setRecipes(nextRecipes);
 
     if (selectedId) {
@@ -237,6 +251,10 @@ export function App(): ReactElement {
         setDraft(recipeToDraft(nextSelected));
       }
     }
+  }
+
+  async function reloadSharingInfo(): Promise<void> {
+    setSharingInfo(await cookbookApi.sharing.getInfo());
   }
 
   function scrollToGrid(): void {
@@ -264,13 +282,14 @@ export function App(): ReactElement {
   }
 
   async function selectRecipe(recipe: Recipe): Promise<void> {
-    const freshRecipe = await window.cookbook.recipes.get(recipe.id);
+    const freshRecipe = await cookbookApi.recipes.get(recipe.id);
     if (!freshRecipe) {
       setStatus({ kind: "recipeNotFound" });
       return;
     }
 
     setSelectedRecipe(freshRecipe);
+    setFlippedTileId(null);
     setDraft(recipeToDraft(freshRecipe));
     setEditing(false);
     setSearchResults([]);
@@ -279,6 +298,7 @@ export function App(): ReactElement {
 
   function startNewRecipe(): void {
     setSelectedRecipe(null);
+    setFlippedTileId(null);
     setDraft(createRecipeDraftWithDefaultUnit(settings.lastIngredientUnit));
     setEditing(true);
     setSearchResults([]);
@@ -288,6 +308,7 @@ export function App(): ReactElement {
 
   function closeExplodedTile(): void {
     setSelectedRecipe(null);
+    setFlippedTileId(null);
     setDraft(createRecipeDraftWithDefaultUnit(settings.lastIngredientUnit));
     setEditing(false);
     setImageSearchStatus("idle");
@@ -307,8 +328,8 @@ export function App(): ReactElement {
     }
 
     const saved = selectedRecipe
-      ? await window.cookbook.recipes.update(selectedRecipe.id, draft)
-      : await window.cookbook.recipes.create(draft);
+      ? await cookbookApi.recipes.update(selectedRecipe.id, draft)
+      : await cookbookApi.recipes.create(draft);
 
     setSelectedRecipe(saved);
     setDraft(recipeToDraft(saved));
@@ -327,14 +348,14 @@ export function App(): ReactElement {
       return;
     }
 
-    await window.cookbook.recipes.delete(selectedRecipe.id);
+    await cookbookApi.recipes.delete(selectedRecipe.id);
     closeExplodedTile();
     setStatus({ kind: "deleted" });
     await reloadRecipes();
   }
 
   async function handlePickImage(): Promise<void> {
-    const image = await window.cookbook.media.pickImage();
+    const image = await cookbookApi.media.pickImage();
     if (image) {
       setDraft((current) => ({ ...current, coverImage: image }));
       setStatus({ kind: "imageAdded" });
@@ -342,6 +363,10 @@ export function App(): ReactElement {
   }
 
   function handleFindPixabayImages(): void {
+    if (isSharedBrowserClient) {
+      return;
+    }
+
     const nextQuery = buildPixabayQuery(draft);
 
     preserveRecipeModalScroll(() => {
@@ -367,7 +392,7 @@ export function App(): ReactElement {
     setPixabayLoading(true);
     setImageSearchStatus("idle");
     try {
-      const results = await window.cookbook.media.searchPixabay(
+      const results = await cookbookApi.media.searchPixabay(
         nextQuery,
         settings.language
       );
@@ -387,7 +412,7 @@ export function App(): ReactElement {
   async function handleSelectPixabayImage(image: PixabayImageOption): Promise<void> {
     setPixabayLoading(true);
     try {
-      const imported = await window.cookbook.media.importPixabayImage(
+      const imported = await cookbookApi.media.importPixabayImage(
         image,
         draft.title || t.untitledRecipe
       );
@@ -411,7 +436,7 @@ export function App(): ReactElement {
     }
 
     try {
-      const filePath = await window.cookbook.recipes.exportPdf(
+      const filePath = await cookbookApi.recipes.exportPdf(
         selectedRecipe.id,
         settings.language
       );
@@ -437,20 +462,21 @@ export function App(): ReactElement {
   async function handleSettingsChange(patch: Partial<AppSettings>): Promise<void> {
     const next = { ...settings, ...patch };
     setSettings(next);
-    const saved = await window.cookbook.settings.update(patch);
+    const saved = await cookbookApi.settings.update(patch);
     setSettings(saved);
+    await reloadSharingInfo();
     if (patch.language && patch.language !== settings.language) {
       setStatus({ kind: "welcome", index: randomWelcomeIndex(patch.language) });
     }
   }
 
   async function handleExport(): Promise<void> {
-    const filePath = await window.cookbook.backup.export();
+    const filePath = await cookbookApi.backup.export();
     setStatus({ kind: filePath ? "backupSaved" : "backupCanceled" });
   }
 
   async function handleImport(): Promise<void> {
-    const importedRecipes = await window.cookbook.backup.import();
+    const importedRecipes = await cookbookApi.backup.import();
     setRecipes(importedRecipes);
     closeExplodedTile();
     setStatus({ kind: "backupImported" });
@@ -583,9 +609,15 @@ export function App(): ReactElement {
           {filteredRecipes.map((recipe) => (
             <RecipeTile
               key={recipe.id}
+              isFlipped={flippedTileId === recipe.id}
               recipe={recipe}
               language={settings.language}
               t={t}
+              onTap={() =>
+                setFlippedTileId((current) =>
+                  current === recipe.id ? null : recipe.id
+                )
+              }
               onSelect={() => void selectRecipe(recipe)}
             />
           ))}
@@ -645,6 +677,7 @@ export function App(): ReactElement {
                 unitSystem={settings.unitSystem}
                 defaultIngredientUnit={settings.lastIngredientUnit}
                 recentEmojis={settings.recentEmojis}
+                canSearchImages={!isSharedBrowserClient}
                 t={t}
                 language={settings.language}
                 onDraftChange={setDraft}
@@ -751,9 +784,11 @@ export function App(): ReactElement {
       {settingsOpen && (
         <GlobalSettingsModal
           settings={settings}
+          sharingInfo={sharingInfo}
           t={t}
           onClose={() => setSettingsOpen(false)}
           onChange={(patch) => void handleSettingsChange(patch)}
+          onRefreshSharing={() => void reloadSharingInfo()}
         />
       )}
     </main>
@@ -762,14 +797,18 @@ export function App(): ReactElement {
 
 function GlobalSettingsModal({
   settings,
+  sharingInfo,
   t,
   onClose,
-  onChange
+  onChange,
+  onRefreshSharing
 }: {
   settings: AppSettings;
+  sharingInfo: WifiSharingInfo | null;
   t: UiText;
   onClose: () => void;
   onChange: (patch: Partial<AppSettings>) => void;
+  onRefreshSharing: () => void;
 }): ReactElement {
   const unitOptions = unitOptionsForSystem(settings.unitSystem);
   const selectedUnit = canonicalUnitValue(settings.lastIngredientUnit);
@@ -901,10 +940,135 @@ function GlobalSettingsModal({
             </select>
             <p className="subtle-line">{t.rememberedUnit}</p>
           </section>
+
+          <section className="settings-card settings-card-wide wifi-sharing-card" aria-labelledby="settings-wifi-title">
+            <div className="settings-card-heading">
+              <h3 id="settings-wifi-title">{t.wifiSharing}</h3>
+              <button className="soft-button compact" type="button" onClick={onRefreshSharing}>
+                {t.wifiRefresh}
+              </button>
+            </div>
+            <div className="segmented-control">
+              <button
+                className={settings.wifiSharingEnabled ? "active" : ""}
+                type="button"
+                aria-pressed={settings.wifiSharingEnabled}
+                onClick={() => onChange({ wifiSharingEnabled: true })}
+              >
+                {t.wifiSharingOn}
+              </button>
+              <button
+                className={!settings.wifiSharingEnabled ? "active" : ""}
+                type="button"
+                aria-pressed={!settings.wifiSharingEnabled}
+                onClick={() => onChange({ wifiSharingEnabled: false })}
+              >
+                {t.wifiSharingOff}
+              </button>
+            </div>
+
+            {settings.wifiSharingEnabled && sharingInfo?.primaryUrl ? (
+              <div className="wifi-sharing-layout">
+                <div className="wifi-qr-wrap" aria-label={t.wifiQrCode}>
+                  <QrCode value={sharingInfo.primaryUrl} />
+                </div>
+                <div className="wifi-sharing-details">
+                  <LabeledCode
+                    label={t.wifiSharingUrl}
+                    value={sharingInfo.primaryUrl}
+                    copyLabel={t.copyAddress}
+                  />
+                  <LabeledCode
+                    label={t.wifiFriendlyUrl}
+                    value={sharingInfo.friendlyUrl}
+                    copyLabel={t.copyAddress}
+                  />
+                  <p className="subtle-line">{t.wifiFriendlyHelp}</p>
+                  <div className="wifi-meta-grid">
+                    <span>
+                      <strong>{t.wifiIpAddress}</strong>
+                      {sharingInfo.ipAddress || t.none}
+                    </span>
+                    <span>
+                      <strong>{t.wifiPort}</strong>
+                      {sharingInfo.port}
+                    </span>
+                  </div>
+                  <p className="wifi-warning">{t.wifiWarning}</p>
+                  <p className="subtle-line">{t.wifiStableIpHelp}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="subtle-line">{t.wifiUnavailable}</p>
+            )}
+          </section>
         </div>
       </div>
     </section>
   );
+}
+
+function QrCode({ value }: { value: string }): ReactElement {
+  const matrix = useMemo(() => createQrMatrix(value), [value]);
+  const size = matrix.length;
+
+  return (
+    <svg
+      className="wifi-qr"
+      viewBox={`0 0 ${size} ${size}`}
+      role="img"
+      aria-label={value}
+      shapeRendering="crispEdges"
+    >
+      <rect width={size} height={size} fill="#ffffff" rx="1" />
+      {matrix.flatMap((row, y) =>
+        row.map((isBlack, x) =>
+          isBlack ? (
+            <rect
+              fill="#202124"
+              height="1"
+              key={`${x}-${y}`}
+              width="1"
+              x={x}
+              y={y}
+            />
+          ) : null
+        )
+      )}
+    </svg>
+  );
+}
+
+function LabeledCode({
+  label,
+  value,
+  copyLabel
+}: {
+  label: string;
+  value: string;
+  copyLabel: string;
+}): ReactElement {
+  return (
+    <div className="labeled-code">
+      <span>{label}</span>
+      <code>{value}</code>
+      <button
+        className="soft-button compact"
+        type="button"
+        onClick={() => void copyText(value)}
+      >
+        {copyLabel}
+      </button>
+    </div>
+  );
+}
+
+async function copyText(value: string): Promise<void> {
+  if (!navigator.clipboard) {
+    return;
+  }
+
+  await navigator.clipboard.writeText(value);
 }
 
 function LanguageToggle({
@@ -1163,6 +1327,7 @@ interface RecipeEditorProps {
   unitSystem: UnitSystem;
   defaultIngredientUnit: string;
   recentEmojis: string[];
+  canSearchImages: boolean;
   t: UiText;
   language: LanguageCode;
   onDraftChange: (draft: RecipeDraft) => void;
@@ -1181,6 +1346,7 @@ function RecipeEditor({
   unitSystem,
   defaultIngredientUnit,
   recentEmojis,
+  canSearchImages,
   t,
   language,
   onDraftChange,
@@ -1277,15 +1443,17 @@ function RecipeEditor({
             <Image size={18} />
             {t.chooseImage}
           </button>
-          <button
-            className="soft-button"
-            type="button"
-            disabled={pixabayLoading}
-            onClick={onFindPixabayImages}
-          >
-            <Search size={18} />
-            {pixabayLoading ? t.searchingImages : t.findImage}
-          </button>
+          {canSearchImages && (
+            <button
+              className="soft-button"
+              type="button"
+              disabled={pixabayLoading}
+              onClick={onFindPixabayImages}
+            >
+              <Search size={18} />
+              {pixabayLoading ? t.searchingImages : t.findImage}
+            </button>
+          )}
         </div>
         {imageSearchStatus !== "idle" && (
           <p className="editor-alert">
@@ -1733,21 +1901,92 @@ function EmojiPickerModal({
 function RecipeTile({
   recipe,
   language,
+  isFlipped,
   t,
+  onTap,
   onSelect
 }: {
   recipe: Recipe;
   language: LanguageCode;
+  isFlipped: boolean;
   t: UiText;
+  onTap: () => void;
   onSelect: () => void;
 }): ReactElement {
+  const pointerStartRef = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    time: number;
+    handled: boolean;
+  } | null>(null);
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLElement>): void {
+    if (!isTouchGridInteraction(event)) {
+      return;
+    }
+
+    pointerStartRef.current = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      time: Date.now(),
+      handled: false
+    };
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLElement>): void {
+    const start = pointerStartRef.current;
+    if (!start || start.id !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    const distance = Math.hypot(deltaX, deltaY);
+    const elapsed = Date.now() - start.time;
+    pointerStartRef.current = { ...start, handled: true };
+    event.preventDefault();
+
+    const horizontalSwipe =
+      Math.abs(deltaX) >= 52 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
+
+    if (horizontalSwipe) {
+      onSelect();
+      return;
+    }
+
+    if (elapsed < 650 && distance < 16) {
+      onTap();
+    }
+  }
+
+  function handlePointerCancel(): void {
+    pointerStartRef.current = null;
+  }
+
+  function handleTileClick(event: ReactMouseEvent<HTMLElement>): void {
+    if (isTouchGridInteraction()) {
+      if (pointerStartRef.current?.handled) {
+        pointerStartRef.current = null;
+      }
+      event.preventDefault();
+      return;
+    }
+
+    onSelect();
+  }
+
   return (
     <article
-      className="recipe-tile"
+      className={`recipe-tile${isFlipped ? " is-flipped" : ""}`}
       role="button"
       tabIndex={0}
       aria-label={t.openRecipe(recipe.title)}
-      onClick={onSelect}
+      onClick={handleTileClick}
+      onPointerCancel={handlePointerCancel}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
@@ -1995,6 +2234,14 @@ function buildPixabayQuery(draft: RecipeDraft): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 100);
+}
+
+function isTouchGridInteraction(event?: { pointerType?: string }): boolean {
+  if (event?.pointerType) {
+    return event.pointerType !== "mouse";
+  }
+
+  return window.matchMedia("(hover: none), (pointer: coarse)").matches;
 }
 
 function createRecipeDraftWithDefaultUnit(unit: string): RecipeDraft {

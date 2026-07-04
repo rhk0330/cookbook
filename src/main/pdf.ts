@@ -122,6 +122,12 @@ export class PdfService {
       return null;
     }
 
+    const pdf = await this.renderRecipePdf(recipe, language);
+    writeFileSync(result.filePath, pdf);
+    return result.filePath;
+  }
+
+  async renderRecipePdf(recipe: Recipe, language: LanguageCode): Promise<Buffer> {
     const pdfWindow = new BrowserWindow({
       show: false,
       width: 900,
@@ -137,7 +143,7 @@ export class PdfService {
     try {
       const html = renderRecipeHtml(recipe, language, this.paths.root);
       await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-      const pdf = await pdfWindow.webContents.printToPDF({
+      return await pdfWindow.webContents.printToPDF({
         printBackground: true,
         pageSize: "A4",
         margins: {
@@ -148,8 +154,6 @@ export class PdfService {
           right: 0.45
         }
       });
-      writeFileSync(result.filePath, pdf);
-      return result.filePath;
     } finally {
       pdfWindow.close();
     }

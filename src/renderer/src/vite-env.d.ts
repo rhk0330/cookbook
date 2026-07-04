@@ -4,6 +4,6 @@ import type { CookbookApi } from "@shared/types";
 
 declare global {
   interface Window {
-    cookbook: CookbookApi;
+    cookbook?: CookbookApi;
   }
 }

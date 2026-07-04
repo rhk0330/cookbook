@@ -1,7 +1,31 @@
+import { app } from "electron";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { RecipeDraft } from "@shared/types";
 import { parseRecipeText } from "@shared/parser";
 import type { MediaService } from "./media";
 import type { RecipeRepository } from "./repository";
+
+const sampleCoverFiles = new Map<string, string>([
+  ["김치볶음밥", "8a87eb2a80b69ef1-김치볶음밥.jpg"],
+  ["된장찌개", "a08860bdb9fd8112-된장찌개.jpg"],
+  ["매콤 오이무침", "5aacb0f879844f59-매콤-오이무침.jpg"],
+  ["Bibimbap", "0e5ddaaa974e104a-Bibimbap.jpg"],
+  ["Bulgogi", "f706f0aeab3fdb94-Bulgogi.jpg"],
+  ["Japchae", "08758268cee082b8-Japchae.jpg"],
+  ["Tteokbokki", "f5543b6a3d44e6e9-Tteokbokki.jpg"],
+  ["Haemul Pajeon", "d92975171fb40a62-Haemul-Pajeon.jpg"],
+  ["Sundubu Jjigae", "cf6b3b65ca6a4887-Sundubu-Jjigae.jpg"],
+  ["Galbi Jjim", "a242ba7c969f4984-Galbi-Jjim.jpg"],
+  ["Jeyuk Bokkeum", "cf14bf59d64b3320-Jeyuk-Bokkeum.jpg"],
+  ["Kimbap", "f16acb5a38dad8dc-Kimbap.jpg"],
+  ["Dakdoritang", "880dc976921bfce4-Dakdoritang.jpg"],
+  ["Miyeok Guk", "5adcf03f7c8021d7-Miyeok-Guk.jpg"],
+  ["Mandu Guk", "8f9e04f3e0870996-Mandu-Guk.jpg"],
+  ["Bossam", "029d465833f792fc-Bossam.jpg"],
+  ["Kimchi Jjigae", "211a2362684de80c-Kimchi-Jjigae.jpg"],
+  ["Hotteok", "f1b0387bf6582c3e-Hotteok.jpg"]
+]);
 
 const seedTexts = [
   `김치볶음밥
@@ -396,8 +420,34 @@ export function seedRecipesIfNeeded(
       coverImage: null
     };
     const recipe = repository.create(draft);
-    const cover = mediaService.generateCover(recipe);
+    const sampleCoverPath = getSampleCoverPath(recipe.title);
+    const cover = sampleCoverPath
+      ? mediaService.importImage(sampleCoverPath)
+      : mediaService.generateCover(recipe);
     repository.setCoverImage(recipe.id, cover);
     existingTitles.add(titleKey);
   }
+}
+
+function getSampleCoverPath(title: string): string | null {
+  const fileName = sampleCoverFiles.get(title.trim());
+  if (!fileName) {
+    return null;
+  }
+
+  const roots = [
+    app.isPackaged
+      ? join(process.resourcesPath, "resources", "sample-images")
+      : join(process.cwd(), "resources", "sample-images"),
+    join(process.cwd(), "data", "images")
+  ];
+
+  for (const root of roots) {
+    const imagePath = join(root, fileName);
+    if (existsSync(imagePath)) {
+      return imagePath;
+    }
+  }
+
+  return null;
 }

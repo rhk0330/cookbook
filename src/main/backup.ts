@@ -38,17 +38,22 @@ export class BackupService {
       return null;
     }
 
+    const payload = this.createBackupPayload();
+
+    writeFileSync(result.filePath, JSON.stringify(payload, null, 2), "utf8");
+    return result.filePath;
+  }
+
+  createBackupPayload(): BackupPayload {
     const recipes = this.repository.list();
     const assets = collectAssets(this.paths.root, recipes);
-    const payload: BackupPayload = {
+
+    return {
       version: 1,
       exportedAt: new Date().toISOString(),
       recipes,
       assets
     };
-
-    writeFileSync(result.filePath, JSON.stringify(payload, null, 2), "utf8");
-    return result.filePath;
   }
 
   async importBackup(): Promise<Recipe[]> {
@@ -63,6 +68,10 @@ export class BackupService {
     }
 
     const payload = JSON.parse(readFileSync(result.filePaths[0], "utf8")) as BackupPayload;
+    return this.importBackupPayload(payload);
+  }
+
+  importBackupPayload(payload: BackupPayload): Recipe[] {
     if (payload.version !== 1 || !Array.isArray(payload.recipes)) {
       throw new Error("지원하지 않는 백업 파일입니다.");
     }

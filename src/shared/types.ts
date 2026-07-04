@@ -127,6 +127,18 @@ export interface AppSettings {
   accentColor: AccentColor;
   lastIngredientUnit: string;
   recentEmojis: string[];
+  wifiSharingEnabled: boolean;
+  wifiSharingPort: number;
+}
+
+export interface WifiSharingInfo {
+  enabled: boolean;
+  running: boolean;
+  port: number;
+  ipAddress: string;
+  primaryUrl: string;
+  friendlyUrl: string;
+  allUrls: string[];
 }
 
 export interface CookbookApi {
@@ -155,6 +167,9 @@ export interface CookbookApi {
   settings: {
     get: () => Promise<AppSettings>;
     update: (patch: Partial<AppSettings>) => Promise<AppSettings>;
+  };
+  sharing: {
+    getInfo: () => Promise<WifiSharingInfo>;
   };
   backup: {
     export: () => Promise<string | null>;
