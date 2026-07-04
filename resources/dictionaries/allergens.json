@@ -1,0 +1,50 @@
+[
+  {
+    "id": "egg",
+    "labelKo": "계란",
+    "labelEn": "Egg",
+    "aliases": ["계란", "달걀", "egg", "eggs"]
+  },
+  {
+    "id": "milk",
+    "labelKo": "우유",
+    "labelEn": "Milk",
+    "aliases": ["우유", "유제품", "milk", "dairy", "cheese", "butter"]
+  },
+  {
+    "id": "soy",
+    "labelKo": "대두",
+    "labelEn": "Soy",
+    "aliases": ["대두", "콩", "두부", "간장", "된장", "soy", "tofu", "soy sauce"]
+  },
+  {
+    "id": "wheat",
+    "labelKo": "밀",
+    "labelEn": "Wheat",
+    "aliases": ["밀", "밀가루", "면", "wheat", "flour", "noodle"]
+  },
+  {
+    "id": "shellfish",
+    "labelKo": "갑각류",
+    "labelEn": "Shellfish",
+    "aliases": ["새우", "게", "갑각류", "shrimp", "crab", "shellfish"]
+  },
+  {
+    "id": "fish",
+    "labelKo": "생선",
+    "labelEn": "Fish",
+    "aliases": ["생선", "멸치", "참치", "fish", "anchovy", "tuna"]
+  },
+  {
+    "id": "peanut",
+    "labelKo": "땅콩",
+    "labelEn": "Peanut",
+    "aliases": ["땅콩", "peanut", "peanuts"]
+  },
+  {
+    "id": "sesame",
+    "labelKo": "참깨",
+    "labelEn": "Sesame",
+    "aliases": ["참깨", "깨", "sesame"]
+  }
+]

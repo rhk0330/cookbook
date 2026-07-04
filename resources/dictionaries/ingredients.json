@@ -1,0 +1,188 @@
+[
+  {
+    "emoji": "🥚",
+    "category": "protein",
+    "allergens": ["egg"],
+    "aliases": ["계란", "달걀", "egg", "eggs"]
+  },
+  {
+    "emoji": "🍆",
+    "category": "vegetable",
+    "allergens": [],
+    "aliases": ["가지", "한국 가지", "eggplant", "korean eggplant"]
+  },
+  {
+    "emoji": "🌶️",
+    "category": "spice",
+    "allergens": [],
+    "aliases": ["고추", "고춧가루", "고추장", "chili", "chilli", "gochugaru", "gochujang"]
+  },
+  {
+    "emoji": "🥬",
+    "category": "vegetable",
+    "allergens": [],
+    "aliases": ["김치", "배추", "양배추", "kimchi", "cabbage"]
+  },
+  {
+    "emoji": "◻️",
+    "category": "protein",
+    "allergens": ["soy"],
+    "aliases": ["두부", "순두부", "tofu", "soft tofu"]
+  },
+  {
+    "emoji": "🐷",
+    "category": "protein",
+    "allergens": [],
+    "aliases": ["돼지고기", "삼겹살", "제육", "pork", "pork belly"]
+  },
+  {
+    "emoji": "🥩",
+    "category": "protein",
+    "allergens": [],
+    "aliases": ["소고기", "쇠고기", "불고기", "beef", "bulgogi"]
+  },
+  {
+    "emoji": "🍗",
+    "category": "protein",
+    "allergens": [],
+    "aliases": ["닭고기", "닭", "치킨", "chicken"]
+  },
+  {
+    "emoji": "🧄",
+    "category": "vegetable",
+    "allergens": [],
+    "aliases": ["마늘", "다진 마늘", "garlic", "minced garlic"]
+  },
+  {
+    "emoji": "🧅",
+    "category": "vegetable",
+    "allergens": [],
+    "aliases": ["양파", "onion", "onions"]
+  },
+  {
+    "emoji": "🌿",
+    "category": "vegetable",
+    "allergens": [],
+    "aliases": ["파", "대파", "쪽파", "scallion", "green onion", "spring onion"]
+  },
+  {
+    "emoji": "🍚",
+    "category": "grain",
+    "allergens": [],
+    "aliases": ["쌀", "밥", "rice", "cooked rice"]
+  },
+  {
+    "emoji": "🍜",
+    "category": "grain",
+    "allergens": ["wheat"],
+    "aliases": ["면", "국수", "라면", "noodle", "noodles", "ramen"]
+  },
+  {
+    "emoji": "🌾",
+    "category": "grain",
+    "allergens": ["wheat"],
+    "aliases": ["밀가루", "부침가루", "튀김가루", "flour", "wheat flour"]
+  },
+  {
+    "emoji": "🥛",
+    "category": "dairy",
+    "allergens": ["milk"],
+    "aliases": ["우유", "milk"]
+  },
+  {
+    "emoji": "🧀",
+    "category": "dairy",
+    "allergens": ["milk"],
+    "aliases": ["치즈", "cheese"]
+  },
+  {
+    "emoji": "🧈",
+    "category": "dairy",
+    "allergens": ["milk"],
+    "aliases": ["버터", "butter"]
+  },
+  {
+    "emoji": "🍤",
+    "category": "seafood",
+    "allergens": ["shellfish"],
+    "aliases": ["새우", "shrimp", "prawn"]
+  },
+  {
+    "emoji": "🦀",
+    "category": "seafood",
+    "allergens": ["shellfish"],
+    "aliases": ["게", "꽃게", "crab"]
+  },
+  {
+    "emoji": "🐟",
+    "category": "seafood",
+    "allergens": ["fish"],
+    "aliases": ["생선", "멸치", "참치", "fish", "anchovy", "tuna"]
+  },
+  {
+    "emoji": "🥜",
+    "category": "nut",
+    "allergens": ["peanut"],
+    "aliases": ["땅콩", "peanut", "peanuts"]
+  },
+  {
+    "emoji": "⚪",
+    "category": "seed",
+    "allergens": ["sesame"],
+    "aliases": ["참깨", "깨", "sesame", "sesame seed"]
+  },
+  {
+    "emoji": "🫙",
+    "category": "sauce",
+    "allergens": ["soy", "wheat"],
+    "aliases": ["간장", "soy sauce", "ganjang"]
+  },
+  {
+    "emoji": "🫘",
+    "category": "sauce",
+    "allergens": ["soy"],
+    "aliases": ["된장", "쌈장", "doenjang", "ssamjang"]
+  },
+  {
+    "emoji": "🥔",
+    "category": "vegetable",
+    "allergens": [],
+    "aliases": ["감자", "potato", "potatoes"]
+  },
+  {
+    "emoji": "🥕",
+    "category": "vegetable",
+    "allergens": [],
+    "aliases": ["당근", "carrot", "carrots"]
+  },
+  {
+    "emoji": "🍄",
+    "category": "vegetable",
+    "allergens": [],
+    "aliases": ["버섯", "표고버섯", "mushroom", "shiitake"]
+  },
+  {
+    "emoji": "🥒",
+    "category": "vegetable",
+    "allergens": [],
+    "aliases": ["오이", "cucumber"]
+  },
+  {
+    "emoji": "🍅",
+    "category": "vegetable",
+    "allergens": [],
+    "aliases": ["토마토", "tomato", "tomatoes"]
+  },
+  {
+    "emoji": "🥬",
+    "category": "vegetable",
+    "allergens": [],
+    "aliases": ["시금치", "spinach"]
+  },
+  {
+    "emoji": "🌱",
+    "category": "vegetable",
+    "allergens": ["soy"],
+    "aliases": ["콩나물", "숙주", "bean sprout", "soybean sprout"]
+  }
+]
