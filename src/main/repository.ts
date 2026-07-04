@@ -2,7 +2,7 @@ import initSqlJs, { type Database, type SqlValue } from "sql.js";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { AppSettings, ImageAsset, Recipe, RecipeDraft } from "@shared/types";
-import { buildRecipeSearchText, recipeMatchesQuery } from "@shared/search";
+import { buildRecipeSearchText, getHangulInitials, normalizeSearchText } from "@shared/search";
 import { normalizeCustomUnits } from "@shared/units";
 import { createId, normalizeDraft } from "@shared/validation";
 import type { DataPaths } from "./paths";
@@ -82,7 +82,31 @@ export class RecipeRepository {
   }
 
   search(query: string): Recipe[] {
-    return this.list().filter((recipe) => recipeMatchesQuery(recipe, query));
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedQuery) {
+      return this.list();
+    }
+
+    const tokens = normalizedQuery.split(" ").filter(Boolean);
+    const initialsQuery = normalizeSearchText(getHangulInitials(query));
+    const clauses: string[] = [];
+    const params: SqlValue[] = [];
+
+    if (tokens.length > 0) {
+      clauses.push(`(${tokens.map(() => "search_text LIKE ?").join(" AND ")})`);
+      params.push(...tokens.map(likeParam));
+    }
+
+    if (initialsQuery && initialsQuery !== normalizedQuery) {
+      clauses.push("search_text LIKE ?");
+      params.push(likeParam(initialsQuery));
+    }
+
+    const rows = this.selectAll<RecipeRow>(
+      `SELECT * FROM recipes WHERE ${clauses.join(" OR ")} ORDER BY updated_at DESC`,
+      params
+    );
+    return rows.map(mapRecipeRow);
   }
 
   get(id: string): Recipe | null {
@@ -443,7 +467,22 @@ export class RecipeRepository {
     this.ensureColumn("recipes", "meal_type", "TEXT NOT NULL DEFAULT 'dinner'");
     this.ensureColumn("recipes", "main_protein", "TEXT NOT NULL DEFAULT 'other'");
     this.ensureColumn("recipes", "prep_ahead", "INTEGER NOT NULL DEFAULT 0");
+    this.backfillEmptySearchText();
     this.save();
+  }
+
+  private backfillEmptySearchText(): void {
+    const rows = this.selectAll<RecipeRow>(
+      "SELECT * FROM recipes WHERE search_text = ''"
+    );
+
+    for (const row of rows) {
+      const recipe = mapRecipeRow(row);
+      this.db.run("UPDATE recipes SET search_text = ? WHERE id = ?", [
+        recipe.searchText,
+        recipe.id
+      ]);
+    }
   }
 
   private ensureColumn(table: string, column: string, definition: string): void {
@@ -550,8 +589,12 @@ function mapRecipeRow(row: RecipeRow): Recipe {
 
   return {
     ...recipe,
-    searchText: buildRecipeSearchText(recipe)
+    searchText: row.search_text || buildRecipeSearchText(recipe)
   };
+}
+
+function likeParam(value: string): string {
+  return `%${value}%`;
 }
 
 function toRecipeValues(recipe: Recipe): SqlValue[] {

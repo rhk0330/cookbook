@@ -87,7 +87,7 @@ export class MediaService {
       id: `image_${randomUUID().replace(/-/g, "")}`,
       localPath,
       url: mediaUrl(localPath),
-      role: "cover",
+      role,
       altText: basename(filePath),
       source: "imported",
       createdAt: new Date().toISOString()

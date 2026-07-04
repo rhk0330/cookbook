@@ -706,7 +706,6 @@ export function App(): ReactElement {
             {editing ? (
               <RecipeEditor
                 draft={draft}
-                selectedRecipe={selectedRecipe}
                 pixabayLoading={pixabayLoading}
                 imageSearchStatus={imageSearchStatus}
                 unitSystem={settings.unitSystem}
@@ -1518,7 +1517,6 @@ function RecipeDetail({
 
 interface RecipeEditorProps {
   draft: RecipeDraft;
-  selectedRecipe: Recipe | null;
   pixabayLoading: boolean;
   imageSearchStatus: ImageSearchStatus;
   unitSystem: UnitSystem;
@@ -1541,7 +1539,6 @@ interface RecipeEditorProps {
 
 function RecipeEditor({
   draft,
-  selectedRecipe,
   pixabayLoading,
   imageSearchStatus,
   unitSystem,
