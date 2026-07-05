@@ -63,6 +63,7 @@ export interface UiText {
   printRecipePdf: string;
   editOnPhone: string;
   editOnPhoneHelp: string;
+  saveBeforeRemotePhotos: string;
   tileSize: string;
   filters: string;
   filterIngredients: string;
@@ -249,6 +250,7 @@ export const uiText: Record<LanguageCode, UiText> = {
     printRecipePdf: "PDF 인쇄",
     editOnPhone: "휴대폰에서 편집",
     editOnPhoneHelp: "같은 Wi-Fi의 휴대폰으로 이 QR 코드를 스캔하면 현재 레시피 편집 화면이 열립니다.",
+    saveBeforeRemotePhotos: "다른 기기에서 사진을 추가하려면 먼저 이 레시피를 저장하세요.",
     tileSize: "타일 크기",
     filters: "필터",
     filterIngredients: "재료 조합",
@@ -457,6 +459,7 @@ export const uiText: Record<LanguageCode, UiText> = {
     printRecipePdf: "Print PDF",
     editOnPhone: "Edit on phone",
     editOnPhoneHelp: "Scan this QR code on the same Wi-Fi to open this recipe directly in edit mode.",
+    saveBeforeRemotePhotos: "Save this recipe before adding photos from another device.",
     tileSize: "Tile size",
     filters: "Filters",
     filterIngredients: "Ingredient combo",

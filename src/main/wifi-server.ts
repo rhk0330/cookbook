@@ -32,8 +32,6 @@ interface UploadImageRequest {
   contentBase64: string;
 }
 
-const newRecipeEditTarget = "__new_recipe__";
-
 export class WifiCookbookServer {
   private server: Server | null = null;
   private actualPort = 0;
@@ -368,12 +366,9 @@ export class WifiCookbookServer {
   }
 
   private handleEditCurrentRequest(response: ServerResponse): void {
-    let destination = "/";
-    if (this.currentEditRecipeId === newRecipeEditTarget) {
-      destination = "/?new=1";
-    } else if (this.currentEditRecipeId) {
-      destination = `/?edit=${encodeURIComponent(this.currentEditRecipeId)}`;
-    }
+    const destination = this.currentEditRecipeId
+      ? `/?edit=${encodeURIComponent(this.currentEditRecipeId)}`
+      : "/";
 
     response.writeHead(302, {
       Location: destination,

@@ -804,6 +804,10 @@ html[data-theme="dark"] .image-picker-modal {
   margin: 0;
 }
 
+.edit-share-card.note-only {
+  grid-template-columns: 1fr;
+}
+
 .edit-share-card .wifi-qr {
   width: 96px;
 }

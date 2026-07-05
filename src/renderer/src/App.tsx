@@ -119,8 +119,6 @@ const defaultSettings: AppSettings = {
   wifiSharingPort: 8787
 };
 
-const newRecipeEditTarget = "__new_recipe__";
-
 interface PhotoViewerState {
   images: ImageAsset[];
   index: number;
@@ -203,9 +201,10 @@ export function App(): ReactElement {
   );
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const editShareUrl =
-    editing && sharingInfo?.running && sharingInfo.primaryUrl
+    editing && selectedRecipe && sharingInfo?.running && sharingInfo.primaryUrl
       ? `${sharingInfo.primaryUrl}/edit-current`
       : "";
+  const showRemotePhotoSaveNote = editing && !selectedRecipe && Boolean(sharingInfo?.running);
 
   useEffect(() => {
     void loadInitialData();
@@ -255,6 +254,48 @@ export function App(): ReactElement {
       document.body.classList.remove("modal-scroll-locked");
     };
   }, [scrollLocked]);
+
+  useEffect(() => {
+    if (!modalOpen) {
+      return;
+    }
+
+    function handleModalShortcut(event: KeyboardEvent): void {
+      if (settingsOpen || pixabayPickerOpen || photoViewer) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === "s") {
+        if (editing) {
+          event.preventDefault();
+          void handleSave();
+        }
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (editing) {
+          void handleSaveAndClose();
+        } else {
+          closeExplodedTile();
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleModalShortcut);
+    return () => window.removeEventListener("keydown", handleModalShortcut);
+  }, [
+    modalOpen,
+    editing,
+    settingsOpen,
+    pixabayPickerOpen,
+    photoViewer,
+    draft,
+    selectedRecipe,
+    settings.lastIngredientUnit
+  ]);
 
   useEffect(() => {
     let canceled = false;
@@ -323,9 +364,7 @@ export function App(): ReactElement {
       return;
     }
 
-    const id = editing
-      ? selectedRecipe?.id ?? newRecipeEditTarget
-      : null;
+    const id = editing && selectedRecipe ? selectedRecipe.id : null;
     void cookbookApi.sharing.setEditTarget(id);
   }, [editing, selectedRecipe?.id]);
 
@@ -341,19 +380,7 @@ export function App(): ReactElement {
     setSharingInfo(nextSharingInfo);
     revisionRef.current = nextRevision;
 
-    const params = new URL(window.location.href).searchParams;
-    const editId = params.get("edit");
-    const newRecipe = params.get("new") === "1";
-    if (newRecipe) {
-      setSelectedRecipe(null);
-      setFlippedTileId(null);
-      setDraft(createRecipeDraftWithDefaultUnit(nextSettings.lastIngredientUnit));
-      setEditing(true);
-      setSearchResults([]);
-      setImageSearchStatus("idle");
-      return;
-    }
-
+    const editId = new URL(window.location.href).searchParams.get("edit");
     if (editId) {
       const deepLinkedRecipe =
         nextRecipes.find((recipe) => recipe.id === editId) ??
@@ -471,28 +498,47 @@ export function App(): ReactElement {
     setImageSearchStatus("idle");
   }
 
-  async function handleSave(): Promise<void> {
+  async function saveRecipeDraft({
+    closeAfterSave = false
+  }: {
+    closeAfterSave?: boolean;
+  } = {}): Promise<boolean> {
     const validationStatus = getValidationStatus(draft);
     if (validationStatus) {
       setStatus(validationStatus);
-      return;
+      return false;
     }
 
     const errors = validateDraft(draft);
     if (errors.length > 0) {
       setStatus({ kind: "validationFailed" });
-      return;
+      return false;
     }
 
     const saved = selectedRecipe
       ? await cookbookApi.recipes.update(selectedRecipe.id, draft)
       : await cookbookApi.recipes.create(draft);
 
+    setStatus({ kind: "saved" });
+    if (closeAfterSave) {
+      await reloadRecipes();
+      closeExplodedTile();
+      return true;
+    }
+
     setSelectedRecipe(saved);
     setDraft(recipeToDraft(saved));
     setEditing(false);
-    setStatus({ kind: "saved" });
     await reloadRecipes(saved.id);
+    return true;
+  }
+
+  async function handleSave(): Promise<void> {
+    await saveRecipeDraft();
+  }
+
+  async function handleSaveAndClose(): Promise<void> {
+    await saveRecipeDraft({ closeAfterSave: true });
   }
 
   async function handleDelete(): Promise<void> {
@@ -884,6 +930,7 @@ export function App(): ReactElement {
                 recentEmojis={settings.recentEmojis}
                 canSearchImages={!isSharedBrowserClient}
                 editShareUrl={editShareUrl}
+                showRemotePhotoSaveNote={showRemotePhotoSaveNote}
                 t={t}
                 language={settings.language}
                 onDraftChange={setDraft}
@@ -1704,6 +1751,7 @@ interface RecipeEditorProps {
   recentEmojis: string[];
   canSearchImages: boolean;
   editShareUrl: string;
+  showRemotePhotoSaveNote: boolean;
   t: UiText;
   language: LanguageCode;
   onDraftChange: Dispatch<SetStateAction<RecipeDraft>>;
@@ -1746,6 +1794,7 @@ function RecipeEditor({
   recentEmojis,
   canSearchImages,
   editShareUrl,
+  showRemotePhotoSaveNote,
   t,
   language,
   onDraftChange,
@@ -1988,6 +2037,14 @@ function RecipeEditor({
             </div>
             <div className="wifi-qr-wrap">
               <QrCode value={editShareUrl} />
+            </div>
+          </section>
+        )}
+        {showRemotePhotoSaveNote && (
+          <section className="edit-share-card note-only" aria-labelledby="remote-photo-note-title">
+            <div>
+              <h3 id="remote-photo-note-title">{t.editOnPhone}</h3>
+              <p className="subtle-line">{t.saveBeforeRemotePhotos}</p>
             </div>
           </section>
         )}
