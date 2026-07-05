@@ -43,6 +43,14 @@ function createHttpCookbookApi(): CookbookApi {
         const blob = await response.blob();
         downloadBlob(blob, `recipe-${id}.pdf`);
         return "downloaded";
+      },
+      printPdf: async (id: string, language: LanguageCode) => {
+        const response = await requestRaw(
+          `/api/recipes/${encodeURIComponent(id)}/pdf?language=${language}`
+        );
+        const blob = await response.blob();
+        printBlob(blob);
+        return true;
       }
     },
     media: {
@@ -107,7 +115,16 @@ function createHttpCookbookApi(): CookbookApi {
         })
     },
     sharing: {
-      getInfo: () => requestJson<WifiSharingInfo>("/api/sharing")
+      getInfo: () => requestJson<WifiSharingInfo>("/api/sharing"),
+      setEditTarget: async (id: string | null) => {
+        await requestRaw("/api/sharing/edit-target", {
+          method: "POST",
+          body: JSON.stringify({ id })
+        });
+      }
+    },
+    sync: {
+      getRevision: () => requestJson<number>("/api/sync-revision")
     },
     backup: {
       export: async () => {
@@ -142,6 +159,7 @@ async function requestJson<T>(
 async function requestRaw(input: string, init: RequestInit = {}): Promise<Response> {
   const response = await fetch(input, {
     ...init,
+    cache: "no-store",
     headers: {
       ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...init.headers
@@ -209,4 +227,29 @@ function downloadBlob(blob: Blob, fileName: string): void {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function printBlob(blob: Blob): void {
+  const url = URL.createObjectURL(blob);
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.src = url;
+  iframe.addEventListener(
+    "load",
+    () => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      window.setTimeout(() => {
+        iframe.remove();
+        URL.revokeObjectURL(url);
+      }, 60000);
+    },
+    { once: true }
+  );
+  document.body.append(iframe);
 }

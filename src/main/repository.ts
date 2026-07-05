@@ -41,12 +41,13 @@ const defaultSettings: AppSettings = {
   customUnits: [],
   hiddenUnits: [],
   recentEmojis: [],
-  wifiSharingEnabled: false,
+  wifiSharingEnabled: true,
   wifiSharingPort: 8787
 };
 
 export class RecipeRepository {
   private readonly db: Database;
+  private revision = Date.now();
 
   private constructor(
     private readonly paths: DataPaths,
@@ -148,6 +149,7 @@ export class RecipeRepository {
       toRecipeValues(recipe)
     );
     this.save();
+    this.bumpRevision();
 
     return recipe;
   }
@@ -189,6 +191,7 @@ export class RecipeRepository {
       [...toRecipeValues(recipe).slice(1), recipe.id]
     );
     this.save();
+    this.bumpRevision();
 
     return recipe;
   }
@@ -196,6 +199,7 @@ export class RecipeRepository {
   delete(id: string): void {
     this.db.run("DELETE FROM recipes WHERE id = ?", [id]);
     this.save();
+    this.bumpRevision();
   }
 
   setCoverImage(id: string, coverImage: ImageAsset): Recipe {
@@ -362,6 +366,7 @@ export class RecipeRepository {
       ["wifiSharingPort", String(next.wifiSharingPort)]
     );
     this.save();
+    this.bumpRevision();
 
     return next;
   }
@@ -416,12 +421,17 @@ export class RecipeRepository {
 
       this.db.run("COMMIT");
       this.save();
+      this.bumpRevision();
     } catch (error) {
       this.db.run("ROLLBACK");
       throw error;
     }
 
     return this.list();
+  }
+
+  getRevision(): number {
+    return this.revision;
   }
 
   close(): void {
@@ -519,6 +529,10 @@ export class RecipeRepository {
 
   private save(): void {
     writeFileSync(this.paths.database, Buffer.from(this.db.export()));
+  }
+
+  private bumpRevision(): void {
+    this.revision = Date.now();
   }
 }
 

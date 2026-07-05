@@ -127,22 +127,35 @@ export class PdfService {
     return result.filePath;
   }
 
-  async renderRecipePdf(recipe: Recipe, language: LanguageCode): Promise<Buffer> {
-    const pdfWindow = new BrowserWindow({
-      show: false,
-      width: 900,
-      height: 1200,
-      backgroundColor: "#ffffff",
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true
-      }
-    });
+  async printRecipe(recipe: Recipe, language: LanguageCode): Promise<boolean> {
+    const printWindow = await this.createRecipeWindow(recipe, language);
 
     try {
-      const html = renderRecipeHtml(recipe, language, this.paths.root);
-      await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      return await new Promise<boolean>((resolvePromise, reject) => {
+        printWindow.webContents.print(
+          {
+            printBackground: true,
+            silent: false
+          },
+          (success, failureReason) => {
+            if (!success && failureReason) {
+              reject(new Error(failureReason));
+              return;
+            }
+
+            resolvePromise(success);
+          }
+        );
+      });
+    } finally {
+      printWindow.close();
+    }
+  }
+
+  async renderRecipePdf(recipe: Recipe, language: LanguageCode): Promise<Buffer> {
+    const pdfWindow = await this.createRecipeWindow(recipe, language);
+
+    try {
       return await pdfWindow.webContents.printToPDF({
         printBackground: true,
         pageSize: "A4",
@@ -158,6 +171,27 @@ export class PdfService {
       pdfWindow.close();
     }
   }
+
+  private async createRecipeWindow(
+    recipe: Recipe,
+    language: LanguageCode
+  ): Promise<BrowserWindow> {
+    const pdfWindow = new BrowserWindow({
+      show: false,
+      width: 900,
+      height: 1200,
+      backgroundColor: "#ffffff",
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true
+      }
+    });
+
+    const html = renderRecipeHtml(recipe, language, this.paths.root);
+    await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    return pdfWindow;
+  }
 }
 
 function renderRecipeHtml(recipe: Recipe, language: LanguageCode, dataRoot: string): string {
@@ -169,6 +203,7 @@ function renderRecipeHtml(recipe: Recipe, language: LanguageCode, dataRoot: stri
     recipe.allergens.length > 0
       ? recipe.allergens.map((id) => getAllergenLabel(id, language))
       : [t.noAllergens];
+  const ingredients = recipe.ingredients.filter((ingredient) => ingredient.name.trim());
 
   return `<!doctype html>
 <html lang="${language}">
@@ -271,20 +306,29 @@ function renderRecipeHtml(recipe: Recipe, language: LanguageCode, dataRoot: stri
           </div>
         </div>
       </section>
-      <section class="section">
-        <h2>${t.ingredients}</h2>
-        <div class="ingredients">
-          ${recipe.ingredients
-            .map(
-              (ingredient) => `<div class="ingredient">
-                <span>${escapeHtml(ingredient.emoji)}</span>
-                <strong>${escapeHtml(ingredient.name)}</strong>
-                <span class="amount">${escapeHtml(formatIngredientAmount(ingredient.quantity, ingredient.unit, language))}</span>
-              </div>`
-            )
-            .join("")}
-        </div>
-      </section>
+      ${
+        ingredients.length > 0
+          ? `<section class="section">
+              <h2>${t.ingredients}</h2>
+              <div class="ingredients">
+                ${ingredients
+                  .map((ingredient) => {
+                    const amount = formatIngredientAmount(
+                      ingredient.quantity,
+                      ingredient.unit,
+                      language
+                    );
+                    return `<div class="ingredient">
+                      <span>${escapeHtml(ingredient.emoji)}</span>
+                      <strong>${escapeHtml(ingredient.name)}</strong>
+                      ${amount ? `<span class="amount">${escapeHtml(amount)}</span>` : ""}
+                    </div>`;
+                  })
+                  .join("")}
+              </div>
+            </section>`
+          : ""
+      }
       ${
         recipe.equipment.length > 0
           ? `<section class="section">

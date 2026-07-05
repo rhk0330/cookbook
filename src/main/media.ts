@@ -1,5 +1,5 @@
 import { dialog, net, protocol } from "electron";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
@@ -285,6 +285,42 @@ export class MediaService {
       ...asset,
       url: mediaUrl(asset.localPath)
     };
+  }
+
+  cleanupUnusedGeneratedCovers(previous: Recipe | null, next: Recipe): void {
+    if (!previous) {
+      return;
+    }
+
+    const retainedPaths = new Set(
+      [
+        next.coverImage,
+        ...(next.coverImages ?? []),
+        ...next.steps.flatMap((step) => step.images ?? [])
+      ]
+        .filter((asset): asset is ImageAsset => Boolean(asset))
+        .map((asset) => asset.localPath)
+    );
+
+    for (const image of [
+      previous.coverImage,
+      ...(previous.coverImages ?? [])
+    ].filter((asset): asset is ImageAsset => Boolean(asset))) {
+      if (image.source !== "generated" || retainedPaths.has(image.localPath)) {
+        continue;
+      }
+
+      this.deleteGeneratedImage(image);
+    }
+  }
+
+  private deleteGeneratedImage(image: ImageAsset): void {
+    const fullPath = resolve(this.paths.root, image.localPath);
+    if (!isInside(this.paths.generatedCovers, fullPath) || !existsSync(fullPath)) {
+      return;
+    }
+
+    unlinkSync(fullPath);
   }
 }
 

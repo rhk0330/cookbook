@@ -14,6 +14,7 @@ import {
   Languages,
   Pencil,
   Plus,
+  Printer,
   Save,
   Search,
   Settings as SettingsIcon,
@@ -26,6 +27,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
   Dispatch,
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactElement,
@@ -70,7 +72,6 @@ import { getAllergenLabel, type UiText, uiText } from "./i18n";
 import { createQrMatrix } from "./qr";
 
 type StatusMessage =
-  | { kind: "welcome"; index: number }
   | { kind: "recipeNotFound" }
   | { kind: "newRecipe" }
   | { kind: "saved" }
@@ -84,6 +85,8 @@ type StatusMessage =
   | { kind: "backupImported" }
   | { kind: "pdfSaved" }
   | { kind: "pdfCanceled" }
+  | { kind: "pdfPrinted" }
+  | { kind: "pdfPrintCanceled" }
   | { kind: "pdfFailed" }
   | { kind: "titleRequired" }
   | { kind: "ingredientRequired" }
@@ -112,7 +115,7 @@ const defaultSettings: AppSettings = {
   customUnits: [],
   hiddenUnits: [],
   recentEmojis: [],
-  wifiSharingEnabled: false,
+  wifiSharingEnabled: true,
   wifiSharingPort: 8787
 };
 
@@ -171,12 +174,16 @@ export function App(): ReactElement {
     allergen: "",
     equipment: ""
   });
-  const [status, setStatus] = useState<StatusMessage>({
-    kind: "welcome",
-    index: randomWelcomeIndex("ko")
-  });
+  const [status, setStatus] = useState<StatusMessage | null>(null);
+  const [landingPromptIndex, setLandingPromptIndex] = useState(() =>
+    randomWelcomeIndex(defaultSettings.language)
+  );
   const gridRef = useRef<HTMLElement | null>(null);
   const recipeModalRef = useRef<HTMLElement | null>(null);
+  const revisionRef = useRef<number | null>(null);
+  const selectedRecipeRef = useRef<Recipe | null>(null);
+  const editingRef = useRef(false);
+  const queryRef = useRef("");
 
   const t = uiText[settings.language];
   const modalOpen = Boolean(selectedRecipe || editing);
@@ -193,6 +200,10 @@ export function App(): ReactElement {
     [recipes]
   );
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
+  const editShareUrl =
+    editing && selectedRecipe && sharingInfo?.running && sharingInfo.primaryUrl
+      ? `${sharingInfo.primaryUrl}/edit-current`
+      : "";
 
   useEffect(() => {
     void loadInitialData();
@@ -201,6 +212,32 @@ export function App(): ReactElement {
   useEffect(() => {
     document.documentElement.lang = settings.language;
   }, [settings.language]);
+
+  useEffect(() => {
+    setLandingPromptIndex(randomWelcomeIndex(settings.language));
+  }, [settings.language]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setLandingPromptIndex((currentIndex) =>
+        nextWelcomeIndex(settings.language, currentIndex)
+      );
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, [settings.language]);
+
+  useEffect(() => {
+    selectedRecipeRef.current = selectedRecipe;
+  }, [selectedRecipe]);
+
+  useEffect(() => {
+    editingRef.current = editing;
+  }, [editing]);
+
+  useEffect(() => {
+    queryRef.current = query;
+  }, [query]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
@@ -242,16 +279,106 @@ export function App(): ReactElement {
     };
   }, [query]);
 
+  useEffect(() => {
+    let canceled = false;
+
+    async function checkRevision(): Promise<void> {
+      try {
+        const nextRevision = await cookbookApi.sync.getRevision();
+        if (canceled) {
+          return;
+        }
+
+        if (revisionRef.current === null) {
+          revisionRef.current = nextRevision;
+          return;
+        }
+
+        if (nextRevision !== revisionRef.current) {
+          await refreshAppData({ preserveDraft: editingRef.current });
+        }
+      } catch {
+        // Ignore transient Wi-Fi/server refresh errors.
+      }
+    }
+
+    const timer = window.setInterval(() => {
+      void checkRevision();
+    }, 3000);
+    window.addEventListener("focus", checkRevision);
+    document.addEventListener("visibilitychange", checkRevision);
+
+    return () => {
+      canceled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", checkRevision);
+      document.removeEventListener("visibilitychange", checkRevision);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isSharedBrowserClient) {
+      return;
+    }
+
+    const id = editing && selectedRecipe ? selectedRecipe.id : null;
+    void cookbookApi.sharing.setEditTarget(id);
+  }, [editing, selectedRecipe?.id]);
+
   async function loadInitialData(): Promise<void> {
-    const [nextSettings, nextRecipes, nextSharingInfo] = await Promise.all([
+    const [nextSettings, nextRecipes, nextSharingInfo, nextRevision] = await Promise.all([
       cookbookApi.settings.get(),
       cookbookApi.recipes.list(),
-      cookbookApi.sharing.getInfo()
+      cookbookApi.sharing.getInfo(),
+      cookbookApi.sync.getRevision()
     ]);
     setSettings(nextSettings);
     setRecipes(nextRecipes);
     setSharingInfo(nextSharingInfo);
-    setStatus({ kind: "welcome", index: randomWelcomeIndex(nextSettings.language) });
+    revisionRef.current = nextRevision;
+
+    const editId = new URL(window.location.href).searchParams.get("edit");
+    if (editId) {
+      const deepLinkedRecipe =
+        nextRecipes.find((recipe) => recipe.id === editId) ??
+        await cookbookApi.recipes.get(editId);
+      if (deepLinkedRecipe) {
+        setSelectedRecipe(deepLinkedRecipe);
+        setDraft(recipeToDraft(deepLinkedRecipe));
+        setEditing(true);
+      }
+    }
+  }
+
+  async function refreshAppData({
+    preserveDraft = false
+  }: {
+    preserveDraft?: boolean;
+  } = {}): Promise<void> {
+    const [nextSettings, nextRecipes, nextSharingInfo, nextRevision] = await Promise.all([
+      cookbookApi.settings.get(),
+      cookbookApi.recipes.list(),
+      cookbookApi.sharing.getInfo(),
+      cookbookApi.sync.getRevision()
+    ]);
+
+    setSettings(nextSettings);
+    setRecipes(nextRecipes);
+    setSharingInfo(nextSharingInfo);
+    revisionRef.current = nextRevision;
+
+    const currentSelected = selectedRecipeRef.current;
+    if (currentSelected && !preserveDraft) {
+      const nextSelected = nextRecipes.find((recipe) => recipe.id === currentSelected.id) ?? null;
+      setSelectedRecipe(nextSelected);
+      if (nextSelected) {
+        setDraft(recipeToDraft(nextSelected));
+      }
+    }
+
+    if (queryRef.current.trim()) {
+      setSearchResults(await cookbookApi.recipes.search(queryRef.current));
+    }
   }
 
   async function reloadRecipes(selectedId?: string): Promise<void> {
@@ -502,8 +629,21 @@ export function App(): ReactElement {
     const saved = await cookbookApi.settings.update(patch);
     setSettings(saved);
     await reloadSharingInfo();
-    if (patch.language && patch.language !== settings.language) {
-      setStatus({ kind: "welcome", index: randomWelcomeIndex(patch.language) });
+  }
+
+  async function handlePrintRecipePdf(): Promise<void> {
+    if (!selectedRecipe) {
+      return;
+    }
+
+    try {
+      const printed = await cookbookApi.recipes.printPdf(
+        selectedRecipe.id,
+        settings.language
+      );
+      setStatus({ kind: printed ? "pdfPrinted" : "pdfPrintCanceled" });
+    } catch {
+      setStatus({ kind: "pdfFailed" });
     }
   }
 
@@ -576,8 +716,13 @@ export function App(): ReactElement {
           {t.viewRecipes}
         </button>
         <p className="status-line" aria-live="polite">
-          {formatStatus(status, t)}
+          {t.welcomeMessages[landingPromptIndex % t.welcomeMessages.length]}
         </p>
+        {status && (
+          <p className="visually-hidden" aria-live="polite">
+            {formatStatus(status, t)}
+          </p>
+        )}
       </section>
 
       <section className="grid-section" ref={gridRef} aria-labelledby="recipes-title">
@@ -684,6 +829,12 @@ export function App(): ReactElement {
                     >
                       <FileDown size={20} />
                     </IconButton>
+                    <IconButton
+                      label={t.printRecipePdf}
+                      onClick={() => void handlePrintRecipePdf()}
+                    >
+                      <Printer size={20} />
+                    </IconButton>
                     <IconButton label={t.edit} onClick={() => setEditing(true)}>
                       <Pencil size={21} />
                     </IconButton>
@@ -716,6 +867,7 @@ export function App(): ReactElement {
                 defaultIngredientUnit={settings.lastIngredientUnit}
                 recentEmojis={settings.recentEmojis}
                 canSearchImages={!isSharedBrowserClient}
+                editShareUrl={editShareUrl}
                 t={t}
                 language={settings.language}
                 onDraftChange={setDraft}
@@ -1415,6 +1567,7 @@ function RecipeDetail({
   onOpenPhotos: (images: ImageAsset[], index: number, title: string) => void;
 }): ReactElement {
   const coverImages = coverImagesFromRecipe(recipe);
+  const visibleIngredients = recipe.ingredients.filter((ingredient) => ingredient.name.trim());
   return (
     <article className="recipe-detail">
       <div className="detail-hero">
@@ -1451,20 +1604,27 @@ function RecipeDetail({
       </div>
 
       <div className="detail-content">
-        <section aria-labelledby="ingredients-title">
-          <h3 id="ingredients-title">{t.ingredients}</h3>
-          <ul className="ingredient-list">
-            {recipe.ingredients.map((ingredient) => (
-              <li key={ingredient.id}>
-                <span className="ingredient-emoji">{ingredient.emoji}</span>
-                <span className="ingredient-name">{ingredient.name}</span>
-                <span className="ingredient-amount">
-                  {formatIngredientAmount(ingredient.quantity, ingredient.unit, language)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {visibleIngredients.length > 0 && (
+          <section aria-labelledby="ingredients-title">
+            <h3 id="ingredients-title">{t.ingredients}</h3>
+            <ul className="ingredient-list">
+              {visibleIngredients.map((ingredient) => {
+                const amount = formatIngredientAmount(
+                  ingredient.quantity,
+                  ingredient.unit,
+                  language
+                );
+                return (
+                  <li key={ingredient.id}>
+                    <span className="ingredient-emoji">{ingredient.emoji}</span>
+                    <span className="ingredient-name">{ingredient.name}</span>
+                    {amount && <span className="ingredient-amount">{amount}</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         <section aria-labelledby="allergens-title">
           <h3 id="allergens-title">{t.allergens}</h3>
@@ -1527,6 +1687,7 @@ interface RecipeEditorProps {
   defaultIngredientUnit: string;
   recentEmojis: string[];
   canSearchImages: boolean;
+  editShareUrl: string;
   t: UiText;
   language: LanguageCode;
   onDraftChange: Dispatch<SetStateAction<RecipeDraft>>;
@@ -1539,6 +1700,25 @@ interface RecipeEditorProps {
   onPreserveScroll: (action: () => void) => void;
 }
 
+function addListItemOnEnter(
+  event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  addItem: () => void
+): void {
+  if (
+    event.key !== "Enter" ||
+    event.shiftKey ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.altKey ||
+    event.nativeEvent.isComposing
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+  addItem();
+}
+
 function RecipeEditor({
   draft,
   pixabayLoading,
@@ -1549,6 +1729,7 @@ function RecipeEditor({
   defaultIngredientUnit,
   recentEmojis,
   canSearchImages,
+  editShareUrl,
   t,
   language,
   onDraftChange,
@@ -1564,10 +1745,38 @@ function RecipeEditor({
   const coverImages = coverImagesFromDraft(draft);
   const [emojiPickerIndex, setEmojiPickerIndex] = useState<number | null>(null);
   const [emojiSearch, setEmojiSearch] = useState("");
+  const pendingFocusRef = useRef<{
+    kind: "equipment" | "ingredient" | "step";
+    index: number;
+  } | null>(null);
+  const equipmentNameRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const ingredientNameRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const stepTextRefs = useRef<Array<HTMLTextAreaElement | null>>([]);
   const filteredEmojiOptions = useMemo(
     () => filterEmojiOptions(emojiSearch),
     [emojiSearch]
   );
+
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (!pending) {
+      return;
+    }
+
+    const target =
+      pending.kind === "equipment"
+        ? equipmentNameRefs.current[pending.index]
+        : pending.kind === "ingredient"
+          ? ingredientNameRefs.current[pending.index]
+          : stepTextRefs.current[pending.index];
+
+    if (!target) {
+      return;
+    }
+
+    pendingFocusRef.current = null;
+    window.requestAnimationFrame(() => target.focus());
+  }, [draft.equipment.length, draft.ingredients.length, draft.steps.length]);
 
   function patchDraft(patch: Partial<RecipeDraft>): void {
     onDraftChange((current) => ({ ...current, ...patch }));
@@ -1601,6 +1810,10 @@ function RecipeEditor({
         }
       ]
     }));
+    pendingFocusRef.current = {
+      kind: "ingredient",
+      index: draft.ingredients.length
+    };
   }
 
   function addEquipment(): void {
@@ -1611,6 +1824,10 @@ function RecipeEditor({
         createEmptyEquipment(current.equipment.length)
       ]
     }));
+    pendingFocusRef.current = {
+      kind: "equipment",
+      index: draft.equipment.length
+    };
   }
 
   function addStep(): void {
@@ -1618,6 +1835,10 @@ function RecipeEditor({
       ...current,
       steps: [...current.steps, createEmptyStep(current.steps.length)]
     }));
+    pendingFocusRef.current = {
+      kind: "step",
+      index: draft.steps.length
+    };
   }
 
   function updateStep(index: number, patch: Partial<RecipeDraft["steps"][number]>): void {
@@ -1742,6 +1963,17 @@ function RecipeEditor({
               ? t.status.pixabayNoResults
               : t.status.pixabaySearchFailed}
           </p>
+        )}
+        {editShareUrl && (
+          <section className="edit-share-card" aria-labelledby="edit-share-title">
+            <div>
+              <h3 id="edit-share-title">{t.editOnPhone}</h3>
+              <p className="subtle-line">{t.editOnPhoneHelp}</p>
+            </div>
+            <div className="wifi-qr-wrap">
+              <QrCode value={editShareUrl} />
+            </div>
+          </section>
         )}
 
         <label className="field-label">
@@ -1876,10 +2108,14 @@ function RecipeEditor({
             {draft.equipment.map((item, index) => (
               <div className="equipment-editor-row" key={item.id}>
                 <input
+                  ref={(node) => {
+                    equipmentNameRefs.current[index] = node;
+                  }}
                   value={item.name}
                   onChange={(event) =>
                     updateEquipment(index, { name: event.currentTarget.value })
                   }
+                  onKeyDown={(event) => addListItemOnEnter(event, addEquipment)}
                   placeholder={t.equipmentName}
                 />
                 <select
@@ -1943,10 +2179,14 @@ function RecipeEditor({
                   {ingredient.emoji || "🍽️"}
                 </button>
                 <input
+                  ref={(node) => {
+                    ingredientNameRefs.current[index] = node;
+                  }}
                   value={ingredient.name}
                   onChange={(event) =>
                     updateIngredient(index, { name: event.currentTarget.value })
                   }
+                  onKeyDown={(event) => addListItemOnEnter(event, addIngredient)}
                   placeholder={t.ingredientName}
                 />
                 <input
@@ -1954,6 +2194,7 @@ function RecipeEditor({
                   onChange={(event) =>
                     updateIngredient(index, { quantity: event.currentTarget.value })
                   }
+                  onKeyDown={(event) => addListItemOnEnter(event, addIngredient)}
                   placeholder={t.quantity}
                 />
                 <input
@@ -1964,6 +2205,7 @@ function RecipeEditor({
                     const unit = event.currentTarget.value;
                     updateIngredient(index, { unit });
                   }}
+                  onKeyDown={(event) => addListItemOnEnter(event, addIngredient)}
                   onBlur={(event) => onRememberIngredientUnit(event.currentTarget.value)}
                   placeholder={t.unit}
                 />
@@ -2010,10 +2252,14 @@ function RecipeEditor({
                 <span>{index + 1}</span>
                 <div className="step-editor-content">
                   <textarea
+                    ref={(node) => {
+                      stepTextRefs.current[index] = node;
+                    }}
                     value={step.text}
                     onChange={(event) =>
                       updateStep(index, { text: event.currentTarget.value })
                     }
+                    onKeyDown={(event) => addListItemOnEnter(event, addStep)}
                     placeholder={t.stepPlaceholder}
                   />
                   <div className="step-photo-actions">
@@ -2608,9 +2854,13 @@ function coverImagesFromDraft(draft: RecipeDraft): ImageAsset[] {
 }
 
 function addCoverImagesToDraft(draft: RecipeDraft, images: ImageAsset[]): RecipeDraft {
+  const hasRealImage = images.some((image) => image.source === "imported" || image.source === "pixabay");
+  const existingImages = coverImagesFromDraft(draft).filter(
+    (image) => !hasRealImage || image.source !== "generated"
+  );
   const nextImages = normalizeImageList([
-    ...coverImagesFromDraft(draft),
-    ...images.map((image) => ({ ...image, role: "cover" as const }))
+    ...images.map((image) => ({ ...image, role: "cover" as const })),
+    ...existingImages
   ]);
 
   return {
@@ -2665,10 +2915,6 @@ function getValidationStatus(draft: RecipeDraft): StatusMessage | null {
 }
 
 function formatStatus(status: StatusMessage, t: UiText): string {
-  if (status.kind === "welcome") {
-    return t.welcomeMessages[status.index % t.welcomeMessages.length];
-  }
-
   return t.status[status.kind];
 }
 
@@ -2688,6 +2934,19 @@ function formatMinutes(minutes: number, t: UiText): string {
 
 function randomWelcomeIndex(language: LanguageCode): number {
   return Math.floor(Math.random() * uiText[language].welcomeMessages.length);
+}
+
+function nextWelcomeIndex(language: LanguageCode, currentIndex: number): number {
+  const messageCount = uiText[language].welcomeMessages.length;
+  if (messageCount <= 1) {
+    return 0;
+  }
+
+  let nextIndex = randomWelcomeIndex(language);
+  while (nextIndex === currentIndex % messageCount) {
+    nextIndex = randomWelcomeIndex(language);
+  }
+  return nextIndex;
 }
 
 function applyRecipeFilters(recipes: Recipe[], filters: RecipeFilters): Recipe[] {

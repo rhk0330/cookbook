@@ -789,6 +789,25 @@ html[data-theme="dark"] .image-picker-modal {
   line-height: 1.45;
 }
 
+.edit-share-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 126px;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.edit-share-card h3 {
+  margin: 0;
+}
+
+.edit-share-card .wifi-qr {
+  width: 96px;
+}
+
 .emoji-picker-modal {
   position: fixed;
   inset: 0;

@@ -7,7 +7,6 @@ import { MediaService, registerMediaProtocol } from "./media";
 import { PdfService } from "./pdf";
 import { getDataPaths } from "./paths";
 import { RecipeRepository } from "./repository";
-import { seedRecipesIfNeeded } from "./seed";
 import { WifiCookbookServer } from "./wifi-server";
 
 protocol.registerSchemesAsPrivileged([
@@ -71,7 +70,6 @@ app.whenReady().then(async () => {
   mediaService = new MediaService(paths);
   backupService = new BackupService(paths, repository);
   pdfService = new PdfService(paths);
-  seedRecipesIfNeeded(repository, mediaService);
   wifiServer = new WifiCookbookServer({
     paths,
     rendererRoot: getRendererRoot(),
@@ -81,7 +79,11 @@ app.whenReady().then(async () => {
     pdfService,
     getPixabayApiKey
   });
-  await wifiServer.syncWithSettings();
+  const currentSettings = repository.getSettings();
+  const startupSettings = currentSettings.wifiSharingEnabled
+    ? currentSettings
+    : repository.updateSettings({ wifiSharingEnabled: true });
+  await wifiServer.syncWithSettings(startupSettings);
   registerIpcHandlers();
   createWindow();
 
@@ -118,9 +120,12 @@ function registerIpcHandlers(): void {
 
     return created;
   });
-  ipcMain.handle("recipes:update", (_event, id: string, draft: RecipeDraft) =>
-    getRepository().update(id, draft)
-  );
+  ipcMain.handle("recipes:update", (_event, id: string, draft: RecipeDraft) => {
+    const previous = getRepository().get(id);
+    const updated = getRepository().update(id, draft);
+    getMediaService().cleanupUnusedGeneratedCovers(previous, updated);
+    return updated;
+  });
   ipcMain.handle("recipes:delete", (_event, id: string) => {
     getRepository().delete(id);
   });
@@ -131,6 +136,14 @@ function registerIpcHandlers(): void {
     }
 
     return getPdfService().exportRecipe(recipe, language);
+  });
+  ipcMain.handle("recipes:printPdf", (_event, id: string, language: AppSettings["language"]) => {
+    const recipe = getRepository().get(id);
+    if (!recipe) {
+      throw new Error("Recipe not found.");
+    }
+
+    return getPdfService().printRecipe(recipe, language);
   });
   ipcMain.handle("media:importImage", (_event, filePath: string) =>
     getMediaService().importImage(filePath)
@@ -166,6 +179,10 @@ function registerIpcHandlers(): void {
     return settings;
   });
   ipcMain.handle("sharing:getInfo", () => getWifiServer().getInfo());
+  ipcMain.handle("sharing:setEditTarget", (_event, id: string | null) => {
+    getWifiServer().setCurrentEditRecipeId(id);
+  });
+  ipcMain.handle("sync:getRevision", () => getRepository().getRevision());
   ipcMain.handle("backup:export", () => getBackupService().exportBackup());
   ipcMain.handle("backup:import", () => getBackupService().importBackup());
 }

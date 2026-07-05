@@ -17,7 +17,9 @@ const cookbookApi: CookbookApi = {
       ipcRenderer.invoke("recipes:update", id, draft),
     delete: (id: string) => ipcRenderer.invoke("recipes:delete", id),
     exportPdf: (id: string, language: LanguageCode) =>
-      ipcRenderer.invoke("recipes:exportPdf", id, language)
+      ipcRenderer.invoke("recipes:exportPdf", id, language),
+    printPdf: (id: string, language: LanguageCode) =>
+      ipcRenderer.invoke("recipes:printPdf", id, language)
   },
   media: {
     importImage: (filePath: string) => ipcRenderer.invoke("media:importImage", filePath),
@@ -36,7 +38,11 @@ const cookbookApi: CookbookApi = {
       ipcRenderer.invoke("settings:update", patch)
   },
   sharing: {
-    getInfo: () => ipcRenderer.invoke("sharing:getInfo")
+    getInfo: () => ipcRenderer.invoke("sharing:getInfo"),
+    setEditTarget: (id: string | null) => ipcRenderer.invoke("sharing:setEditTarget", id)
+  },
+  sync: {
+    getRevision: () => ipcRenderer.invoke("sync:getRevision")
   },
   backup: {
     export: () => ipcRenderer.invoke("backup:export"),

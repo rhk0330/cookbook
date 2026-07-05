@@ -155,6 +155,7 @@ export interface CookbookApi {
     update: (id: string, draft: RecipeDraft) => Promise<Recipe>;
     delete: (id: string) => Promise<void>;
     exportPdf: (id: string, language: LanguageCode) => Promise<string | null>;
+    printPdf: (id: string, language: LanguageCode) => Promise<boolean>;
   };
   media: {
     importImage: (filePath: string) => Promise<ImageAsset>;
@@ -176,6 +177,10 @@ export interface CookbookApi {
   };
   sharing: {
     getInfo: () => Promise<WifiSharingInfo>;
+    setEditTarget: (id: string | null) => Promise<void>;
+  };
+  sync: {
+    getRevision: () => Promise<number>;
   };
   backup: {
     export: () => Promise<string | null>;

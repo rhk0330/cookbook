@@ -35,6 +35,7 @@ interface UploadImageRequest {
 export class WifiCookbookServer {
   private server: Server | null = null;
   private actualPort = 0;
+  private currentEditRecipeId: string | null = null;
 
   constructor(private readonly options: WifiCookbookServerOptions) {}
 
@@ -100,6 +101,10 @@ export class WifiCookbookServer {
     };
   }
 
+  setCurrentEditRecipeId(id: string | null): void {
+    this.currentEditRecipeId = id?.trim() || null;
+  }
+
   private async listen(port: number): Promise<void> {
     const server = createServer((request, response) => {
       void this.handleRequest(request, response).catch((error) => {
@@ -145,6 +150,11 @@ export class WifiCookbookServer {
       return;
     }
 
+    if (url.pathname === "/edit-current") {
+      this.handleEditCurrentRequest(response);
+      return;
+    }
+
     this.handleStaticRequest(response, url);
   }
 
@@ -163,6 +173,19 @@ export class WifiCookbookServer {
 
     if (method === "GET" && pathname === "/api/sharing") {
       this.sendJson(response, this.getInfo());
+      return;
+    }
+
+    if (method === "POST" && pathname === "/api/sharing/edit-target") {
+      const body = await readJsonBody<{ id: string | null }>(request);
+      this.setCurrentEditRecipeId(body.id);
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+
+    if (method === "GET" && pathname === "/api/sync-revision") {
+      this.sendJson(response, this.options.repository.getRevision());
       return;
     }
 
@@ -288,7 +311,10 @@ export class WifiCookbookServer {
 
     if (method === "PUT" && !action) {
       const draft = await readJsonBody<RecipeDraft>(request);
-      this.sendJson(response, this.toHttpRecipe(this.options.repository.update(id, draft)));
+      const previous = this.options.repository.get(id);
+      const updated = this.options.repository.update(id, draft);
+      this.options.mediaService.cleanupUnusedGeneratedCovers(previous, updated);
+      this.sendJson(response, this.toHttpRecipe(updated));
       return;
     }
 
@@ -339,6 +365,17 @@ export class WifiCookbookServer {
     createReadStream(fullPath).pipe(response);
   }
 
+  private handleEditCurrentRequest(response: ServerResponse): void {
+    const destination = this.currentEditRecipeId
+      ? `/?edit=${encodeURIComponent(this.currentEditRecipeId)}`
+      : "/";
+    response.writeHead(302, {
+      Location: destination,
+      "Cache-Control": "no-store"
+    });
+    response.end();
+  }
+
   private handleStaticRequest(response: ServerResponse, url: URL): void {
     const requestedPath = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
     const fullPath = resolve(this.options.rendererRoot, requestedPath);
@@ -383,7 +420,7 @@ export class WifiCookbookServer {
 
     return {
       ...image,
-      url: `/media/${encodeMediaPath(image.localPath)}`
+      url: `/media/${encodeMediaPath(image.localPath)}?v=${encodeURIComponent(image.createdAt)}`
     };
   }
 
@@ -400,6 +437,11 @@ export class WifiCookbookServer {
   ): void {
     response.writeHead(status, {
       "Content-Type": contentType,
+      ...(contentType === "application/json"
+        ? {
+            "Cache-Control": "no-store"
+          }
+        : {}),
       ...(fileName
         ? {
             "Content-Disposition": `attachment; filename="${fileName}"`

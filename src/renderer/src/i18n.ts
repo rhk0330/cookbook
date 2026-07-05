@@ -60,6 +60,9 @@ export interface UiText {
   close: string;
   delete: string;
   exportRecipePdf: string;
+  printRecipePdf: string;
+  editOnPhone: string;
+  editOnPhoneHelp: string;
   tileSize: string;
   filters: string;
   filterIngredients: string;
@@ -158,6 +161,8 @@ export interface UiText {
     backupImported: string;
     pdfSaved: string;
     pdfCanceled: string;
+    pdfPrinted: string;
+    pdfPrintCanceled: string;
     pdfFailed: string;
     titleRequired: string;
     ingredientRequired: string;
@@ -204,7 +209,7 @@ export const uiText: Record<LanguageCode, UiText> = {
     defaultUnit: "기본 재료 단위",
     rememberedUnit: "새 재료를 추가할 때 이 단위를 자동으로 넣습니다.",
     customUnits: "사용자 단위",
-    customUnitPlaceholder: "예: pinch, bundle, bowl",
+    customUnitPlaceholder: "사용자 단위 입력",
     noCustomUnits: "추가한 사용자 단위가 없습니다.",
     removeUnit: "단위 삭제",
     removedUnits: "숨긴 단위",
@@ -241,6 +246,9 @@ export const uiText: Record<LanguageCode, UiText> = {
     close: "닫기",
     delete: "삭제",
     exportRecipePdf: "PDF 내보내기",
+    printRecipePdf: "PDF 인쇄",
+    editOnPhone: "휴대폰에서 편집",
+    editOnPhoneHelp: "같은 Wi-Fi의 휴대폰으로 이 QR 코드를 스캔하면 현재 레시피 편집 화면이 열립니다.",
     tileSize: "타일 크기",
     filters: "필터",
     filterIngredients: "재료 조합",
@@ -294,7 +302,7 @@ export const uiText: Record<LanguageCode, UiText> = {
     pixabayEmptyPrompt: "검색어를 입력하고 상위 5개 이미지를 찾아보세요.",
     pixabayAttribution: "Pixabay 검색 결과입니다. 선택한 이미지는 로컬에 저장됩니다.",
     title: "제목",
-    titlePlaceholder: "예: 김치볶음밥",
+    titlePlaceholder: "레시피 제목 입력",
     cookTime: "조리시간",
     allergensPlaceholder: "계란, 대두, wheat",
     add: "추가",
@@ -363,6 +371,8 @@ export const uiText: Record<LanguageCode, UiText> = {
       backupImported: "백업을 가져왔습니다.",
       pdfSaved: "PDF를 저장했습니다.",
       pdfCanceled: "PDF 저장이 취소되었습니다.",
+      pdfPrinted: "인쇄를 보냈습니다.",
+      pdfPrintCanceled: "인쇄가 취소되었습니다.",
       pdfFailed: "PDF를 만들지 못했습니다.",
       titleRequired: "레시피 제목을 입력해 주세요.",
       ingredientRequired: "재료를 한 가지 이상 입력해 주세요.",
@@ -378,19 +388,19 @@ export const uiText: Record<LanguageCode, UiText> = {
     welcomeMessages: [
       "What should we cook today!",
       "Welcome back, chef!",
-      "Let’s make something delicious!",
+      "Let's make something delicious!",
       "Your next favorite recipe starts here!",
       "Time to turn ingredients into magic!",
       "Find a recipe and fire up the kitchen!",
-      "Let’s make dinner feel special!",
+      "Let's make dinner feel special!",
       "A great meal is waiting!",
       "Search, cook, and enjoy!",
       "Bring a Korean classic to life!",
-      "Let’s build your perfect cookbook!",
-      "Pick a dish and let’s get cooking!",
+      "Let's build your perfect cookbook!",
+      "Pick a dish and let's get cooking!",
       "Small kitchen, big flavor!",
       "Your recipe collection is ready!",
-      "Let’s make something worth sharing!"
+      "Let's make something worth sharing!"
     ],
     searchPlaceholder: "Search by title or ingredient",
     searchAria: "Search recipe titles or ingredients",
@@ -407,7 +417,7 @@ export const uiText: Record<LanguageCode, UiText> = {
     defaultUnit: "Default ingredient unit",
     rememberedUnit: "New ingredients will start with this unit.",
     customUnits: "Custom units",
-    customUnitPlaceholder: "Example: pinch, bundle, bowl",
+    customUnitPlaceholder: "Enter a custom unit",
     noCustomUnits: "No custom units yet.",
     removeUnit: "Remove unit",
     removedUnits: "Hidden units",
@@ -444,6 +454,9 @@ export const uiText: Record<LanguageCode, UiText> = {
     close: "Close",
     delete: "Delete",
     exportRecipePdf: "Export PDF",
+    printRecipePdf: "Print PDF",
+    editOnPhone: "Edit on phone",
+    editOnPhoneHelp: "Scan this QR code on the same Wi-Fi to open this recipe directly in edit mode.",
     tileSize: "Tile size",
     filters: "Filters",
     filterIngredients: "Ingredient combo",
@@ -497,7 +510,7 @@ export const uiText: Record<LanguageCode, UiText> = {
     pixabayEmptyPrompt: "Enter a search term to show the top 5 images.",
     pixabayAttribution: "Pixabay search results. Selected images are saved locally.",
     title: "Title",
-    titlePlaceholder: "Example: Kimchi fried rice",
+    titlePlaceholder: "Enter a recipe title",
     cookTime: "Cook time",
     allergensPlaceholder: "egg, soy, wheat",
     add: "Add",
@@ -566,6 +579,8 @@ export const uiText: Record<LanguageCode, UiText> = {
       backupImported: "Backup imported.",
       pdfSaved: "PDF saved.",
       pdfCanceled: "PDF export canceled.",
+      pdfPrinted: "Sent to printer.",
+      pdfPrintCanceled: "Print canceled.",
       pdfFailed: "Could not create the PDF.",
       titleRequired: "Enter a recipe title.",
       ingredientRequired: "Add at least one ingredient.",
