@@ -119,6 +119,8 @@ const defaultSettings: AppSettings = {
   wifiSharingPort: 8787
 };
 
+const newRecipeEditTarget = "__new_recipe__";
+
 interface PhotoViewerState {
   images: ImageAsset[];
   index: number;
@@ -201,7 +203,7 @@ export function App(): ReactElement {
   );
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const editShareUrl =
-    editing && selectedRecipe && sharingInfo?.running && sharingInfo.primaryUrl
+    editing && sharingInfo?.running && sharingInfo.primaryUrl
       ? `${sharingInfo.primaryUrl}/edit-current`
       : "";
 
@@ -321,7 +323,9 @@ export function App(): ReactElement {
       return;
     }
 
-    const id = editing && selectedRecipe ? selectedRecipe.id : null;
+    const id = editing
+      ? selectedRecipe?.id ?? newRecipeEditTarget
+      : null;
     void cookbookApi.sharing.setEditTarget(id);
   }, [editing, selectedRecipe?.id]);
 
@@ -337,7 +341,19 @@ export function App(): ReactElement {
     setSharingInfo(nextSharingInfo);
     revisionRef.current = nextRevision;
 
-    const editId = new URL(window.location.href).searchParams.get("edit");
+    const params = new URL(window.location.href).searchParams;
+    const editId = params.get("edit");
+    const newRecipe = params.get("new") === "1";
+    if (newRecipe) {
+      setSelectedRecipe(null);
+      setFlippedTileId(null);
+      setDraft(createRecipeDraftWithDefaultUnit(nextSettings.lastIngredientUnit));
+      setEditing(true);
+      setSearchResults([]);
+      setImageSearchStatus("idle");
+      return;
+    }
+
     if (editId) {
       const deepLinkedRecipe =
         nextRecipes.find((recipe) => recipe.id === editId) ??
