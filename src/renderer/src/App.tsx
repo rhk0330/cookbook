@@ -25,10 +25,12 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
+  Dispatch,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactElement,
-  ReactNode
+  ReactNode,
+  SetStateAction
 } from "react";
 import { suggestEmoji } from "@shared/emoji";
 import { aliasesForIngredientName, getHangulInitials, normalizeSearchText } from "@shared/search";
@@ -1527,7 +1529,7 @@ interface RecipeEditorProps {
   canSearchImages: boolean;
   t: UiText;
   language: LanguageCode;
-  onDraftChange: (draft: RecipeDraft) => void;
+  onDraftChange: Dispatch<SetStateAction<RecipeDraft>>;
   onPickCoverImages: () => void;
   onPickStepImages: (stepIndex: number) => void;
   onFindPixabayImages: () => void;
@@ -1567,66 +1569,76 @@ function RecipeEditor({
     [emojiSearch]
   );
 
-  function updateIngredient(index: number, patch: Partial<Ingredient>): void {
-    const nextIngredients = draft.ingredients.map((ingredient, itemIndex) => {
-      if (itemIndex !== index) {
-        return ingredient;
-      }
+  function patchDraft(patch: Partial<RecipeDraft>): void {
+    onDraftChange((current) => ({ ...current, ...patch }));
+  }
 
-      const next = { ...ingredient, ...patch };
-      if (patch.name && (!ingredient.emoji || ingredient.emoji === "🍽️")) {
-        next.emoji = suggestEmoji(patch.name);
-      }
-      return next;
+  function updateIngredient(index: number, patch: Partial<Ingredient>): void {
+    onDraftChange((current) => {
+      const nextIngredients = current.ingredients.map((ingredient, itemIndex) => {
+        if (itemIndex !== index) {
+          return ingredient;
+        }
+
+        const next = { ...ingredient, ...patch };
+        if (patch.name && (!ingredient.emoji || ingredient.emoji === "🍽️")) {
+          next.emoji = suggestEmoji(patch.name);
+        }
+        return next;
+      });
+      return { ...current, ingredients: nextIngredients };
     });
-    onDraftChange({ ...draft, ingredients: nextIngredients });
   }
 
   function addIngredient(): void {
-    onDraftChange({
-      ...draft,
+    onDraftChange((current) => ({
+      ...current,
       ingredients: [
-        ...draft.ingredients,
+        ...current.ingredients,
         {
-          ...createEmptyIngredient(draft.ingredients.length),
+          ...createEmptyIngredient(current.ingredients.length),
           unit: defaultIngredientUnit
         }
       ]
-    });
+    }));
   }
 
   function addEquipment(): void {
-    onDraftChange({
-      ...draft,
+    onDraftChange((current) => ({
+      ...current,
       equipment: [
-        ...draft.equipment,
-        createEmptyEquipment(draft.equipment.length)
+        ...current.equipment,
+        createEmptyEquipment(current.equipment.length)
       ]
-    });
+    }));
   }
 
   function addStep(): void {
-    onDraftChange({
-      ...draft,
-      steps: [...draft.steps, createEmptyStep(draft.steps.length)]
-    });
+    onDraftChange((current) => ({
+      ...current,
+      steps: [...current.steps, createEmptyStep(current.steps.length)]
+    }));
   }
 
   function updateStep(index: number, patch: Partial<RecipeDraft["steps"][number]>): void {
-    onDraftChange({
-      ...draft,
-      steps: draft.steps.map((item, itemIndex) =>
+    onDraftChange((current) => ({
+      ...current,
+      steps: current.steps.map((item, itemIndex) =>
         itemIndex === index ? { ...item, ...patch } : item
       )
-    });
+    }));
   }
 
   function removeCoverImage(index: number): void {
-    const nextImages = coverImages.filter((_, itemIndex) => itemIndex !== index);
-    onDraftChange({
-      ...draft,
-      coverImage: nextImages[0] ?? null,
-      coverImages: nextImages
+    onDraftChange((current) => {
+      const nextImages = coverImagesFromDraft(current).filter(
+        (_, itemIndex) => itemIndex !== index
+      );
+      return {
+        ...current,
+        coverImage: nextImages[0] ?? null,
+        coverImages: nextImages
+      };
     });
   }
 
@@ -1640,11 +1652,7 @@ function RecipeEditor({
       selected,
       ...coverImages.filter((_, itemIndex) => itemIndex !== index)
     ];
-    onDraftChange({
-      ...draft,
-      coverImage: selected,
-      coverImages: nextImages
-    });
+    patchDraft({ coverImage: selected, coverImages: nextImages });
   }
 
   function removeStepImage(stepIndex: number, imageIndex: number): void {
@@ -1659,12 +1667,12 @@ function RecipeEditor({
   }
 
   function updateEquipment(index: number, patch: Partial<Equipment>): void {
-    onDraftChange({
-      ...draft,
-      equipment: draft.equipment.map((item, itemIndex) =>
+    onDraftChange((current) => ({
+      ...current,
+      equipment: current.equipment.map((item, itemIndex) =>
         itemIndex === index ? { ...item, ...patch } : item
       )
-    });
+    }));
   }
 
   function selectEmoji(emoji: string): void {
@@ -1741,7 +1749,7 @@ function RecipeEditor({
           <input
             value={draft.title}
             onChange={(event) =>
-              onDraftChange({ ...draft, title: event.currentTarget.value })
+              patchDraft({ title: event.currentTarget.value })
             }
             placeholder={t.titlePlaceholder}
           />
@@ -1755,8 +1763,7 @@ function RecipeEditor({
               min="0"
               value={draft.timeMinutes}
               onChange={(event) =>
-                onDraftChange({
-                  ...draft,
+                patchDraft({
                   timeMinutes: Number(event.currentTarget.value)
                 })
               }
@@ -1772,8 +1779,7 @@ function RecipeEditor({
                 step="1"
                 value={Math.max(1, draft.spicyLevel)}
                 onChange={(event) =>
-                  onDraftChange({
-                    ...draft,
+                  patchDraft({
                     spicyLevel: Number(event.currentTarget.value)
                   })
                 }
@@ -1786,8 +1792,7 @@ function RecipeEditor({
             <select
               value={draft.difficulty}
               onChange={(event) =>
-                onDraftChange({
-                  ...draft,
+                patchDraft({
                   difficulty: event.currentTarget.value as Difficulty
                 })
               }
@@ -1805,8 +1810,7 @@ function RecipeEditor({
             <select
               value={draft.mealType}
               onChange={(event) =>
-                onDraftChange({
-                  ...draft,
+                patchDraft({
                   mealType: event.currentTarget.value as MealType
                 })
               }
@@ -1823,8 +1827,7 @@ function RecipeEditor({
             <select
               value={draft.mainProtein}
               onChange={(event) =>
-                onDraftChange({
-                  ...draft,
+                patchDraft({
                   mainProtein: event.currentTarget.value as MainProtein
                 })
               }
@@ -1841,8 +1844,7 @@ function RecipeEditor({
             <select
               value={draft.prepAhead ? "yes" : "no"}
               onChange={(event) =>
-                onDraftChange({
-                  ...draft,
+                patchDraft({
                   prepAhead: event.currentTarget.value === "yes"
                 })
               }
@@ -1858,8 +1860,7 @@ function RecipeEditor({
           <input
             value={draft.allergens.join(", ")}
             onChange={(event) =>
-              onDraftChange({
-                ...draft,
+              patchDraft({
                 allergens: splitCsv(event.currentTarget.value)
               })
             }
@@ -1897,10 +1898,10 @@ function RecipeEditor({
                 <IconButton
                   label={t.removeEquipment}
                   onClick={() =>
-                    onDraftChange({
-                      ...draft,
-                      equipment: draft.equipment.filter((_, itemIndex) => itemIndex !== index)
-                    })
+                    onDraftChange((current) => ({
+                      ...current,
+                      equipment: current.equipment.filter((_, itemIndex) => itemIndex !== index)
+                    }))
                   }
                 >
                   <Trash2 size={18} />
@@ -1962,8 +1963,8 @@ function RecipeEditor({
                   onChange={(event) => {
                     const unit = event.currentTarget.value;
                     updateIngredient(index, { unit });
-                    onRememberIngredientUnit(unit);
                   }}
+                  onBlur={(event) => onRememberIngredientUnit(event.currentTarget.value)}
                   placeholder={t.unit}
                 />
                 <datalist id={`ingredient-unit-options-${index}`}>
@@ -1976,10 +1977,10 @@ function RecipeEditor({
                 <IconButton
                   label={t.removeIngredient}
                   onClick={() =>
-                    onDraftChange({
-                      ...draft,
-                      ingredients: draft.ingredients.filter((_, itemIndex) => itemIndex !== index)
-                    })
+                    onDraftChange((current) => ({
+                      ...current,
+                      ingredients: current.ingredients.filter((_, itemIndex) => itemIndex !== index)
+                    }))
                   }
                 >
                   <Trash2 size={18} />
@@ -2039,10 +2040,10 @@ function RecipeEditor({
                 <IconButton
                   label={t.removeStep}
                   onClick={() =>
-                    onDraftChange({
-                      ...draft,
-                      steps: draft.steps.filter((_, itemIndex) => itemIndex !== index)
-                    })
+                    onDraftChange((current) => ({
+                      ...current,
+                      steps: current.steps.filter((_, itemIndex) => itemIndex !== index)
+                    }))
                   }
                 >
                   <Trash2 size={18} />
@@ -2067,7 +2068,7 @@ function RecipeEditor({
           <textarea
             value={draft.notes}
             onChange={(event) =>
-              onDraftChange({ ...draft, notes: event.currentTarget.value })
+              patchDraft({ notes: event.currentTarget.value })
             }
             placeholder={t.notesPlaceholder}
           />
